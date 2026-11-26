@@ -62,10 +62,10 @@ type mpvGLFramebuffer struct {
 }
 
 const (
-	mpvFormatString  = 1
-	mpvFormatFlag    = 3
-	mpvFormatInt64   = 4
-	mpvFormatDouble  = 5
+	mpvFormatString = 1
+	mpvFormatFlag   = 3
+	mpvFormatInt64  = 4
+	mpvFormatDouble = 5
 
 	mpvEventShutdown       = 1
 	mpvEventFileLoaded     = 8

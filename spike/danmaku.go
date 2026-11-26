@@ -12,8 +12,8 @@ import (
 // danmakuSprite caches a 2x stroked bitmap of one danmaku line.
 // Rasterization happens in a single background slot so MyGo's glyph atlas is never touched concurrently.
 type danmakuSprite struct {
-	bmp    atomic.Pointer[ui.Bitmap]
-	w, h   float32
+	bmp  atomic.Pointer[ui.Bitmap]
+	w, h float32
 }
 
 type danmakuItem struct {

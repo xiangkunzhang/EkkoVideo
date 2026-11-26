@@ -61,14 +61,14 @@ func initGLCallbacks() error {
 // glSurface hosts an NSOpenGLView positioned BELOW MyGo's Metal surface
 // so MyGo UI (controls, sidebar, danmaku) composites directly on top.
 type glSurface struct {
-	view          objc.ID
-	glCtx         objc.ID
-	render        uintptr
-	api           *mpvAPI
-	done          chan struct{}
-	updates       chan struct{}
-	framesDrawn   atomic.Uint64
-	lastBounds    cocoaRect
+	view        objc.ID
+	glCtx       objc.ID
+	render      uintptr
+	api         *mpvAPI
+	done        chan struct{}
+	updates     chan struct{}
+	framesDrawn atomic.Uint64
+	lastBounds  cocoaRect
 }
 
 func newGLSurface(nsWindow uintptr, api *mpvAPI, mpvHandle uintptr) (*glSurface, error) {
