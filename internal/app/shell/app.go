@@ -1,5 +1,5 @@
 // Package shell wires the EkkoVideo main window, sidebar navigation, router,
-// local playback lifecycle, and the supervised EkkoGateway child process.
+// local & online playback lifecycle, and the supervised EkkoGateway child process.
 package shell
 
 import (
@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/xiangkunzhang/EkkoVideo/internal/app/pages/detail"
 	"github.com/xiangkunzhang/EkkoVideo/internal/app/pages/home"
 	"github.com/xiangkunzhang/EkkoVideo/internal/app/pages/list"
 	"github.com/xiangkunzhang/EkkoVideo/internal/app/pages/settings"
@@ -21,6 +23,7 @@ import (
 	"github.com/xiangkunzhang/EkkoVideo/internal/engine/mpv"
 	"github.com/xiangkunzhang/EkkoVideo/internal/engine/surface"
 	gwclient "github.com/xiangkunzhang/EkkoVideo/internal/gateway/client"
+	"github.com/xiangkunzhang/EkkoVideo/internal/infra/imageloader"
 	"github.com/xiangkunzhang/EkkoVideo/internal/infra/logx"
 	"github.com/xiangkunzhang/EkkoVideo/internal/infra/safego"
 	"github.com/xiangkunzhang/EkkoVideo/internal/infra/store"
@@ -29,6 +32,7 @@ import (
 
 type App struct {
 	version string
+	dataDir string
 	win     *mygo.Window
 	router  *ui.Router
 	logger  *logx.Logger
@@ -38,15 +42,25 @@ type App struct {
 	gateway  *gwclient.Supervisor
 	gwStatus gwclient.Status
 
-	settingsStore *store.Store[core.Settings]
-	settings      core.Settings
-	historyStore  *store.Store[[]core.WatchRecord]
-	history       *core.History
+	settingsStore  *store.Store[core.Settings]
+	settings       core.Settings
+	historyStore   *store.Store[[]core.WatchRecord]
+	history        *core.History
+	favoritesStore *store.Store[[]core.FavoriteItem]
+	favorites      *core.Favorites
+	img            *imageloader.Loader
 
 	section     string
 	sideShown   float32
 	homeList    ui.ListState
 	fileBrowser list.FileBrowserState
+
+	// Online platforms & poster grids
+	onlinePlatforms []core.ProviderInfo
+	posterGrids     map[string]*list.PosterGridState
+	favGrid         list.PosterGridState
+	detailState     detail.State
+	detailCancel    context.CancelFunc
 
 	// Open URL modal
 	urlModalOpen bool
@@ -54,11 +68,12 @@ type App struct {
 	urlField     ui.Handle
 
 	// Active player
-	mpv         *mpv.Engine
-	surf        surface.VideoSurface
-	playerState player.PlayerViewState
-	vodProfile  *player.VODSingleProfile
-	onPlayer    bool
+	mpv           *mpv.Engine
+	surf          surface.VideoSurface
+	playerState   player.PlayerViewState
+	vodProfile    *player.VODSingleProfile
+	seriesProfile *player.VODSeriesProfile
+	onPlayer      bool
 }
 
 // Run starts the EkkoVideo desktop GUI.
@@ -71,6 +86,10 @@ func Run(version string, initialFiles []string) {
 	if err != nil {
 		dataDir = "."
 	}
+	cacheDir, err := mygo.App.Path(mygo.PathCache)
+	if err != nil {
+		cacheDir = filepath.Join(dataDir, "cache")
+	}
 	logDir, err := mygo.App.Path(mygo.PathLogs)
 	if err != nil {
 		logDir = dataDir
@@ -78,7 +97,7 @@ func Run(version string, initialFiles []string) {
 	logger := logx.Open(filepath.Join(logDir, "ekkovideo.log"))
 	defer logger.Close()
 
-	a := NewApp(version, dataDir, logger)
+	a := NewApp(version, dataDir, cacheDir, logger)
 
 	mygo.App.OnSecondInstance(func(args []string, _ string) {
 		a.update(func() {
@@ -144,27 +163,49 @@ func Run(version string, initialFiles []string) {
 }
 
 // NewApp constructs an App with persisted stores and registered providers (also used in headless UI tests).
-func NewApp(version, dataDir string, logger *logx.Logger) *App {
+func NewApp(version, dataDir, cacheDir string, logger *logx.Logger) *App {
 	cfgStore, cfg := store.Open(filepath.Join(dataDir, "settings.json"), core.DefaultSettings())
 	histStore, recs := store.Open(filepath.Join(dataDir, "history.json"), []core.WatchRecord(nil))
+	favStore, favs := store.Open(filepath.Join(dataDir, "favorites.json"), []core.FavoriteItem(nil))
 
 	reg := core.NewRegistry()
 	loc := local.New()
 	reg.Register(loc)
 
 	a := &App{
-		version:       version,
-		router:        ui.NewRouter("/home"),
-		logger:        logger,
-		registry:      reg,
-		local:         loc,
-		settingsStore: cfgStore,
-		settings:      cfg,
-		historyStore:  histStore,
-		history:       core.NewHistory(recs),
-		section:       "/home",
-		sideShown:     1,
+		version:        version,
+		dataDir:        dataDir,
+		router:         ui.NewRouter("/home"),
+		logger:         logger,
+		registry:       reg,
+		local:          loc,
+		settingsStore:  cfgStore,
+		settings:       cfg,
+		historyStore:   histStore,
+		history:        core.NewHistory(recs),
+		favoritesStore: favStore,
+		favorites:      core.NewFavorites(favs),
+		section:        "/home",
+		sideShown:      1,
+		posterGrids:    make(map[string]*list.PosterGridState),
+		favGrid: list.PosterGridState{
+			SourceID: "favorites",
+			Title:    "我的收藏",
+			Started:  true,
+		},
+		onlinePlatforms: []core.ProviderInfo{
+			{ID: "online:hongguo", Name: "红果短剧", Type: core.ProviderOnline, ListStyle: core.ListPosterGrid},
+			{ID: "online:yeguo", Name: "野果短剧", Type: core.ProviderOnline, ListStyle: core.ListPosterGrid},
+			{ID: "online:huangdou", Name: "黄豆短剧", Type: core.ProviderOnline, ListStyle: core.ListPosterGrid},
+			{ID: "online:huangju", Name: "黄桔短剧", Type: core.ProviderOnline, ListStyle: core.ListPosterGrid},
+			{ID: "online:dsd", Name: "短剧岛", Type: core.ProviderOnline, ListStyle: core.ListPosterGrid},
+		},
 		vodProfile:    player.NewVODSingleProfile(),
+		seriesProfile: player.NewVODSeriesProfile(),
+	}
+	a.img = imageloader.New(filepath.Join(cacheDir, "covers"), a.update)
+	a.seriesProfile.OnOpenRelated = func(it core.Item) {
+		a.openDetail(it)
 	}
 	a.initPlayerCallbacks()
 	return a
@@ -181,6 +222,9 @@ func (a *App) startGateway() {
 	a.gateway = gwclient.NewSupervisor("", nil, a.logger.Printf, func(st gwclient.Status) {
 		a.update(func() {
 			a.gwStatus = st
+			if st.Running {
+				a.syncOnlineProviders()
+			}
 		})
 	})
 	safego.Go("gateway-start", a.logger.Printf, func() {
@@ -196,8 +240,28 @@ func (a *App) startGateway() {
 	})
 }
 
+func (a *App) syncOnlineProviders() {
+	if a.gateway == nil {
+		return
+	}
+	safego.Go("gw-providers", a.logger.Printf, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+		provs, err := a.gateway.Providers(ctx)
+		if err != nil || len(provs) == 0 {
+			return
+		}
+		a.update(func() {
+			a.onlinePlatforms = provs
+		})
+	})
+}
+
 func (a *App) shutdown() {
 	a.savePlaybackProgress()
+	if a.detailCancel != nil {
+		a.detailCancel()
+	}
 	if a.surf != nil {
 		a.surf.Close()
 		a.surf = nil
@@ -208,6 +272,9 @@ func (a *App) shutdown() {
 	}
 	if a.gateway != nil {
 		a.gateway.Stop()
+	}
+	if a.favoritesStore != nil {
+		a.favoritesStore.Close()
 	}
 	if a.historyStore != nil {
 		a.historyStore.Close()
@@ -240,20 +307,25 @@ func (a *App) view(c *ui.Context) {
 	}
 	path := a.router.Path()
 	onPlayer := path == "/play"
+	onDetail := path == "/detail"
 	if a.onPlayer && !onPlayer {
 		a.leavePlayerCleanup()
 	}
+	if !a.onPlayer && onPlayer && a.img != nil {
+		// Release UI poster bitmaps during playback to cap memory.
+		a.img.ClearMemory()
+	}
 	a.onPlayer = onPlayer
-	if !onPlayer {
+	if !onPlayer && !onDetail {
 		a.section = path
 	}
 
 	row := ui.Row(c).Fill().AlignItems(ui.Stretch)
 	targetSide := float32(1)
-	if onPlayer {
+	if onPlayer || onDetail {
 		targetSide = 0
 	}
-	a.sideShown = row.Animate("sidebar", targetSide, 220*time.Millisecond)
+	a.sideShown = row.Animate("sidebar", targetSide, 200*time.Millisecond)
 	sideW := theme.SidebarWidth * a.sideShown
 
 	row.Children(func() {
@@ -287,6 +359,42 @@ func (a *App) view(c *ui.Context) {
 					OnNavigateDir:      a.loadFolder,
 					OnPlayFile:         a.playLocalItem,
 				})
+			case r.Match("/favorites"):
+				r.Title("收藏")
+				a.syncFavGrid()
+				list.PosterGridPage(c, &a.favGrid, a.img, list.PosterGridActions{
+					OnOpenDetail: a.openDetail,
+					OnToggleFav:  a.toggleFav,
+					IsFav:        a.favorites.Has,
+				})
+			case r.Match("/online/{id}"):
+				id := "online:" + r.Param("id")
+				pg := a.getPosterGrid(id)
+				r.Title(pg.Title)
+				list.PosterGridPage(c, pg, a.img, list.PosterGridActions{
+					OnLoadMore:   func() { a.loadPosterPage(pg) },
+					OnSelectMode: func(m string) { pg.Mode = m; pg.ResetFeed(); a.loadPosterPage(pg) },
+					OnSelectCat:  func(cat string) { pg.Category = cat; pg.ResetFeed(); a.loadPosterPage(pg) },
+					OnSearch:     func(q string) { pg.SearchQuery = q; pg.Mode = "search"; pg.ResetFeed(); a.loadPosterPage(pg) },
+					OnOpenDetail: a.openDetail,
+					OnToggleFav:  a.toggleFav,
+					IsFav:        a.favorites.Has,
+				})
+			case r.Match("/detail"):
+				r.Title(a.detailState.Item.Title)
+				resumeEp := a.resumeEpisodeIndex(a.detailState.Item)
+				detail.Page(c, &a.detailState, a.img, a.favorites.Has(a.detailState.Item.Ref), resumeEp, detail.Actions{
+					OnBack: func() {
+						a.router.Back()
+						if a.router.Path() == "/detail" {
+							a.router.Push("/home")
+						}
+					},
+					OnPlayEpisode: a.playDetailEpisode,
+					OnToggleFav:   func() { a.toggleFav(a.detailState.Item) },
+					OnOpenRelated: a.openDetail,
+					OnRetry:       func() { a.openDetail(a.detailState.Item) },
+				})
 			case r.Match("/settings"):
 				r.Title("设置")
 				mpvPath, hwdec := "", ""
@@ -309,12 +417,18 @@ func (a *App) view(c *ui.Context) {
 				})
 			case r.Match("/play"):
 				r.Title("播放")
-				player.Stage(c, &a.playerState, a.vodProfile, a.surf, sideW)
+				var prof player.PlayerProfile = a.vodProfile
+				if a.isOnlinePlayback() {
+					prof = a.seriesProfile
+				}
+				player.Stage(c, &a.playerState, prof, a.surf, sideW)
 			}
 		}).Grow(1).MinWidth(0)
 
 		if onPlayer {
 			main.Background(ui.Transparent)
+		} else if onDetail {
+			main.Background(ui.Hex("#0b0c10"))
 		} else {
 			main.Background(t.Background)
 		}
@@ -336,6 +450,13 @@ func (a *App) sidebar(c *ui.Context) {
 		ui.SidebarSection(c, "媒体", nil, func() {
 			ui.SidebarItem(c, "/home", theme.IconHome, "首页")
 			ui.SidebarItem(c, "/local", theme.IconFilm, "本地视频")
+			ui.SidebarItem(c, "/favorites", theme.IconStar, "收藏")
+		})
+		ui.SidebarSection(c, "在线平台", nil, func() {
+			for _, p := range a.onlinePlatforms {
+				short := strings.TrimPrefix(p.ID, "online:")
+				ui.SidebarItem(c.Key("sb-"+p.ID), "/online/"+short, theme.IconGlobe, p.Name)
+			}
 		})
 		ui.SidebarSection(c, "系统", nil, func() {
 			ui.SidebarItem(c, "/settings", theme.IconSettings, "设置与诊断")
@@ -347,7 +468,6 @@ func (a *App) sidebar(c *ui.Context) {
 	if sb.Changed() {
 		a.router.Push(selected)
 	}
-	// Gateway status pill at bottom of sidebar
 	ui.Row(c).Padding(8, 12).AlignItems(ui.Center).Gap(6).Children(func() {
 		dot := ui.Hex("#4caf50")
 		txt := "网关就绪"
@@ -358,6 +478,169 @@ func (a *App) sidebar(c *ui.Context) {
 		ui.Box(c).Size(7, 7).Radius(4).Background(dot)
 		ui.Text(c, txt).FontSize(11).TextColor(t.TextMuted)
 	})
+}
+
+func (a *App) getPosterGrid(sourceID string) *list.PosterGridState {
+	if pg := a.posterGrids[sourceID]; pg != nil {
+		return pg
+	}
+	title := sourceID
+	for _, p := range a.onlinePlatforms {
+		if p.ID == sourceID {
+			title = p.Name
+			break
+		}
+	}
+	pg := &list.PosterGridState{
+		SourceID: sourceID,
+		Title:    title,
+		Mode:     "recommend",
+		Modes:    []core.Section{{ID: "recommend", Label: "推荐"}, {ID: "rank", Label: "榜单"}},
+	}
+	a.posterGrids[sourceID] = pg
+
+	if a.gateway != nil && a.gwStatus.Running {
+		safego.Go("gw-sections", a.logger.Printf, func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			sec, err := a.gateway.Sections(ctx, sourceID)
+			if err != nil {
+				return
+			}
+			a.update(func() {
+				if len(sec.Modes) > 0 {
+					pg.Modes = sec.Modes
+				}
+				pg.Categories = sec.Categories
+				if pg.Category == "" && len(sec.Categories) > 0 {
+					pg.Category = sec.Categories[0].ID
+				}
+			})
+		})
+	}
+	return pg
+}
+
+func (a *App) loadPosterPage(pg *list.PosterGridState) {
+	if pg.Loading || a.gateway == nil {
+		return
+	}
+	pg.Started = true
+	pg.Loading = true
+	pg.Err = ""
+	cursor := pg.NextCursor
+	mode := pg.Mode
+	cat := pg.Category
+	q := strings.TrimSpace(pg.SearchQuery)
+	src := pg.SourceID
+
+	safego.Go("gw-browse", a.logger.Printf, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		var page core.Page
+		var err error
+		if mode == "search" && q != "" {
+			page, err = a.gateway.Search(ctx, src, q, cursor)
+		} else {
+			page, err = a.gateway.Browse(ctx, src, core.Query{
+				Section:  mode,
+				Category: cat,
+				Cursor:   cursor,
+			})
+		}
+		a.update(func() {
+			pg.Loading = false
+			if err != nil {
+				pg.Err = err.Error()
+				pg.ErrAt = time.Now()
+				return
+			}
+			pg.AppendPage(page)
+		})
+	})
+}
+
+func (a *App) syncFavGrid() {
+	items := make([]core.Item, 0, len(a.favorites.Items))
+	for _, f := range a.favorites.Items {
+		items = append(items, f.Item)
+	}
+	a.favGrid.Items = items
+}
+
+func (a *App) toggleFav(it core.Item) {
+	a.favorites.Toggle(it)
+	a.favoritesStore.Put(append([]core.FavoriteItem(nil), a.favorites.Items...))
+}
+
+func (a *App) openDetail(it core.Item) {
+	if a.detailCancel != nil {
+		a.detailCancel()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	a.detailCancel = cancel
+
+	a.detailState = detail.State{
+		Item:    it,
+		Loading: true,
+	}
+	a.router.Push("/detail")
+
+	if a.gateway == nil {
+		a.detailState.Loading = false
+		a.detailState.Err = "网关未就绪"
+		return
+	}
+	safego.Go("gw-detail", a.logger.Printf, func() {
+		d, err := a.gateway.Detail(ctx, it.Ref.Source, it.Ref.ID)
+		var rel []core.Item
+		if err == nil && d != nil {
+			rel, _ = a.gateway.Related(ctx, it.Ref.Source, it.Ref.ID, d.Item.Title)
+		}
+		a.update(func() {
+			if ctx.Err() != nil {
+				return
+			}
+			a.detailState.Loading = false
+			if err != nil {
+				a.detailState.Err = err.Error()
+				return
+			}
+			a.detailState.Detail = d
+			a.detailState.Related = rel
+			a.seriesProfile.Related = rel
+		})
+	})
+}
+
+func (a *App) playDetailEpisode(idx int) {
+	if a.detailState.Detail == nil || len(a.detailState.Detail.Episodes) == 0 {
+		return
+	}
+	q := core.NewQueue(a.detailState.Detail.Episodes, idx)
+	a.startQueue(q)
+}
+
+func (a *App) resumeEpisodeIndex(series core.Item) int {
+	if a.detailState.Detail == nil {
+		return 0
+	}
+	for i, ep := range a.detailState.Detail.Episodes {
+		if _, ok := a.history.Get(ep.Ref); ok {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+func (a *App) isOnlinePlayback() bool {
+	if a.playerState.Session == nil || a.playerState.Session.Queue == nil {
+		return false
+	}
+	if it, ok := a.playerState.Session.Queue.Active(); ok {
+		return strings.HasPrefix(it.Ref.Source, "online:")
+	}
+	return false
 }
 
 func (a *App) openURLModal(c *ui.Context) {
@@ -480,6 +763,10 @@ func (a *App) resumeWatchRecord(rec core.WatchRecord) {
 	}
 	if rec.Ref.Source == "url" {
 		a.playURL(rec.Ref.ID)
+		return
+	}
+	if strings.HasPrefix(rec.Ref.Source, "online:") {
+		a.openDetail(core.Item{Ref: rec.Ref, Title: rec.Title, Poster: rec.Poster})
 	}
 }
 
@@ -517,24 +804,41 @@ func (a *App) startQueue(q *core.Queue) {
 		return
 	}
 	if err := a.ensurePlayerReady(); err != nil {
-		a.playerState.Session.HandleFailure(err.Error())
 		a.playerState.Session.Phase = core.PhaseFailed
 		a.playerState.Session.LastError = err.Error()
 		return
 	}
 
 	safego.Go("resolve-play", a.logger.Printf, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
 		var src *core.PlaySource
 		var err error
-		if item.Ref.Source == local.SourceID {
-			src, err = a.local.Resolve(context.Background(), item.Ref, core.ResolveOpts{})
-		} else {
+		switch {
+		case item.Ref.Source == local.SourceID:
+			src, err = a.local.Resolve(ctx, item.Ref, core.ResolveOpts{})
+		case strings.HasPrefix(item.Ref.Source, "online:"):
+			if a.gateway == nil {
+				err = fmt.Errorf("网关未就绪")
+			} else {
+				sid := item.Extra["seriesId"]
+				epNo, _ := strconv.Atoi(item.Extra["ep"])
+				if epNo <= 0 {
+					epNo = item.Index
+				}
+				src, err = a.gateway.Resolve(ctx, item.Ref.Source, sid, item.Ref.ID, epNo, "720p")
+			}
+		default:
 			src = &core.PlaySource{Ref: item.Ref, Title: item.Title, URL: item.Ref.ID, Kind: core.StreamMP4}
 		}
+
 		a.update(func() {
 			if err != nil {
-				a.playerState.Session.LastError = err.Error()
-				a.playerState.Session.Phase = core.PhaseFailed
+				if a.playerState.Session.Generation == gen {
+					a.playerState.Session.LastError = err.Error()
+					a.playerState.Session.Phase = core.PhaseFailed
+				}
 				return
 			}
 			src.StartAt = a.history.ResumePosition(item.Ref)

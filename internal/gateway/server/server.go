@@ -27,6 +27,7 @@ type Handshake struct {
 type Options struct {
 	Port       int
 	Token      string
+	DataDir    string
 	WatchStdin bool
 	Out        io.Writer
 	Stdin      io.Reader
@@ -56,23 +57,29 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	defer ln.Close()
 
+	dataDir := opts.DataDir
+	if dataDir == "" {
+		dataDir = os.Getenv("EKKO_DATA_DIR")
+	}
+	gw := newGatewayApp(dataDir, ln.Addr().String())
+
 	startedAt := time.Now()
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+	protectedMux := http.NewServeMux()
+	protectedMux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":        true,
 			"pid":       os.Getpid(),
 			"uptimeSec": int64(time.Since(startedAt).Seconds()),
 		})
 	})
-	mux.HandleFunc("GET /v1/providers", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"providers": []any{},
-		})
-	})
+	gw.registerProtected(protectedMux)
+
+	rootMux := http.NewServeMux()
+	gw.registerStream(rootMux)
+	rootMux.Handle("/", authMiddleware(token, protectedMux))
 
 	srv := &http.Server{
-		Handler:           authMiddleware(token, mux),
+		Handler:           rootMux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
