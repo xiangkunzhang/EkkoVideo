@@ -1,0 +1,38 @@
+# Build & packaging outputs
+/build/
+/dist/
+/out/
+/bin/
+*.app
+*.dmg
+*.exe
+*.msi
+*.pkg
+*.zip
+*.tar.gz
+
+# Go & MyGo caches
+/.gocache/
+/.gomodcache/
+/.gopath/
+*.test
+coverage.out
+coverage.html
+
+# Local runtime data, logs & signing keys
+/data/
+/.signing/
+*.log
+*.p12
+*.cer
+*.key
+.env
+.env.local
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

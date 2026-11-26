@@ -1,0 +1,20 @@
+{
+  "name": "EkkoVideo",
+  "identifier": "com.ekkovideo.app",
+  "version": "0.1.0",
+  "copyright": "© 2026 EkkoVideo Contributors",
+  "out": "build",
+  "macos": {
+    "minimumSystemVersion": "13.0"
+  },
+  "fileAssociations": [
+    {
+      "name": "Video File",
+      "extensions": ["mp4", "mkv", "mov", "avi", "flv", "webm", "ts", "m2ts", "m3u8"]
+    },
+    {
+      "name": "Playlist File",
+      "extensions": ["m3u", "pls"]
+    }
+  ]
+}
