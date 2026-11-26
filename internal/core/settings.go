@@ -10,16 +10,28 @@ type Settings struct {
 	Hwdec         string            `json:"hwdec"`       // auto-safe | no
 	LastFolder    string            `json:"lastFolder,omitempty"`
 	Shortcuts     map[string]string `json:"shortcuts,omitempty"`
+
+	DanmakuEnabled  bool     `json:"danmakuEnabled"`
+	DanmakuFontSize float64  `json:"danmakuFontSize"`
+	DanmakuOpacity  float64  `json:"danmakuOpacity"`
+	DanmakuSpeed    float64  `json:"danmakuSpeed"`
+	DanmakuArea     float64  `json:"danmakuArea"`
+	DanmakuKeywords []string `json:"danmakuKeywords,omitempty"`
 }
 
 func DefaultSettings() Settings {
 	return Settings{
-		Volume:        80,
-		Muted:         false,
-		PlaybackSpeed: 1.0,
-		AutoNext:      true,
-		AspectRatio:   "auto",
-		Hwdec:         "auto-safe",
-		Shortcuts:     DefaultShortcuts(),
+		Volume:          80,
+		Muted:           false,
+		PlaybackSpeed:   1.0,
+		AutoNext:        true,
+		AspectRatio:     "auto",
+		Hwdec:           "auto-safe",
+		Shortcuts:       DefaultShortcuts(),
+		DanmakuEnabled:  true,
+		DanmakuFontSize: 20,
+		DanmakuOpacity:  0.88,
+		DanmakuSpeed:    1.0,
+		DanmakuArea:     0.50,
 	}
 }

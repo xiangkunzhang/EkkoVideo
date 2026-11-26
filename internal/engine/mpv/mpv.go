@@ -294,11 +294,13 @@ func (e *Engine) Load(src *core.PlaySource) error {
 	e.mu.Lock()
 	e.snap.Loaded = false
 	e.snap.EOF = false
+	e.snap.Paused = false
 	e.snap.Error = ""
 	e.snap.Position = src.StartAt.Seconds()
 	e.mu.Unlock()
 
 	e.Command("loadfile", src.URL, "replace")
+	e.SetProperty("pause", "no")
 	for _, sub := range src.Subtitles {
 		e.Command("sub-add", sub.URL, "auto", sub.Label, sub.Language)
 	}

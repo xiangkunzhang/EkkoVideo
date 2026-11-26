@@ -6,6 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/EkkoVideo/internal/danmaku"
 	"github.com/xiangkunzhang/EkkoVideo/internal/engine/mpv"
 	"github.com/xiangkunzhang/EkkoVideo/internal/engine/surface"
 )
@@ -28,6 +29,13 @@ type PlayerViewState struct {
 	OSDMessage    string
 	OSDUntil      time.Time
 	PointerInside bool
+	LastPointerX  float32
+	LastPointerY  float32
+
+	DanmakuSched *danmaku.Scheduler
+	DanmakuRend  *danmaku.Renderer
+	DanmakuCfg   danmaku.Config
+	SnapAt       time.Time
 
 	OnBack             func()
 	OnTogglePlay       func()
@@ -46,6 +54,9 @@ type PlayerViewState struct {
 	OnScreenshot       func()
 	OnToggleFullscreen func()
 	OnTogglePin        func()
+	OnToggleDanmaku    func()
+	OnDanmakuChanged   func()
+	OnLoadDanmakuFile  func()
 	OnRetry            func()
 }
 
@@ -105,16 +116,21 @@ func Stage(c *ui.Context, st *PlayerViewState, prof PlayerProfile, surf surface.
 	ui.Row(c).Fill().Children(func() {
 		// Video viewport area (transparent so native GL surface shows through)
 		canvas := ui.Box(c.Key("player-canvas")).Grow(1).FillHeight().Background(ui.Transparent)
-		if canvas.Hovered() {
-			// Detect pointer movement/hover without spamming every frame unless moved
-			if now.Sub(st.LastActivity) > 300*time.Millisecond && st.PointerInside {
-				// Keep alive only on real interaction; mouse click/scroll/key wakes it
-			}
+		if px, py, ok := canvas.PointerPosition(); ok {
 			st.PointerInside = true
+			if px != st.LastPointerX || py != st.LastPointerY {
+				st.LastPointerX, st.LastPointerY = px, py
+				st.Touch(now)
+			}
 		} else {
 			st.PointerInside = false
 		}
-		if canvas.Clicked() {
+		if canvas.DoubleClicked() {
+			st.Touch(now)
+			if st.OnToggleFullscreen != nil {
+				st.OnToggleFullscreen()
+			}
+		} else if canvas.Clicked() {
 			st.Touch(now)
 			if st.ActiveMenu != "" {
 				st.ActiveMenu = ""
@@ -124,6 +140,29 @@ func Stage(c *ui.Context, st *PlayerViewState, prof PlayerProfile, surf surface.
 		}
 
 		canvas.Children(func() {
+			// Native 2x danmaku layer strictly clipped to videoContentRect
+			if st.DanmakuSched != nil && st.DanmakuRend != nil && st.DanmakuCfg.Enabled {
+				posSec := st.Snap.Position
+				if !st.Snap.Paused && !st.SnapAt.IsZero() && st.Snap.Loaded {
+					spd := st.Snap.Speed
+					if spd <= 0 {
+						spd = 1
+					}
+					posSec += now.Sub(st.SnapAt).Seconds() * spd
+				}
+				if !st.Snap.Paused {
+					vr := danmaku.VideoContentRect(ui.Rect{W: videoW, H: winH}, st.Snap.VideoWidth, st.Snap.VideoHeight, st.AspectRatio)
+					st.DanmakuSched.Step(posSec, vr.W, vr.H, st.DanmakuCfg, st.DanmakuRend.MakeSprite)
+				}
+				if len(st.DanmakuSched.Active) > 0 && !st.Snap.Paused {
+					c.Invalidate()
+				}
+				ui.Box(c.Key("danmaku-layer")).Fill().PassThrough().Draw(func(p *ui.Painter, r ui.Rect) {
+					vr := danmaku.VideoContentRect(r, st.Snap.VideoWidth, st.Snap.VideoHeight, st.AspectRatio)
+					danmaku.Draw(p, vr, st.DanmakuSched, posSec, st.DanmakuCfg)
+				})
+			}
+
 			// Phase overlays: Loading / Buffering / Failed
 			if st.Session != nil {
 				switch st.Session.Phase {
@@ -162,12 +201,6 @@ func Stage(c *ui.Context, st *PlayerViewState, prof PlayerProfile, surf surface.
 			if chrome {
 				prof.TopBar(c, st)
 				prof.BottomBar(c, st)
-			} else {
-				// Invisible hover strip at bottom to wake controls
-				wake := ui.Box(c.Key("player-wake-bottom")).Absolute().Bottom(0).Left(0).Right(0).Height(36).PassThrough()
-				if wake.Hovered() {
-					st.Touch(now)
-				}
 			}
 		})
 

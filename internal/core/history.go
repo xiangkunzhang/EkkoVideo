@@ -5,6 +5,8 @@ import "time"
 // WatchRecord tracks playback progress for a media item (max 500 entries, most recent first).
 type WatchRecord struct {
 	Ref       ItemRef   `json:"ref"`
+	SeriesID  string    `json:"seriesId,omitempty"`
+	Episode   int       `json:"episode,omitempty"`
 	Title     string    `json:"title"`
 	Poster    string    `json:"poster,omitempty"`
 	Position  float64   `json:"position"` // seconds

@@ -501,25 +501,54 @@ func (m *Manager) Related(source, id, title string) ([]core.Item, error) {
 		return nil, nil
 	}
 	works, err := m.Hongguo.Related(id, title)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]core.Item, 0, len(works))
-	for _, w := range works {
-		sub := fmt.Sprintf("%d 集", w.EpisodeCnt)
-		if w.Season != "" {
-			sub = w.Season + " · " + sub
+	if err == nil && len(works) > 0 {
+		out := make([]core.Item, 0, len(works))
+		for _, w := range works {
+			sub := fmt.Sprintf("%d 集", w.EpisodeCnt)
+			if w.Season != "" {
+				sub = w.Season + " · " + sub
+			}
+			out = append(out, core.Item{
+				Ref:      core.ItemRef{Source: "online:hongguo", Kind: core.KindSeries, ID: w.SeriesID},
+				Title:    w.Title,
+				Subtitle: sub,
+				Poster:   w.Cover,
+				Overview: w.Intro,
+				Children: w.EpisodeCnt,
+			})
 		}
-		out = append(out, core.Item{
-			Ref:      core.ItemRef{Source: "online:hongguo", Kind: core.KindSeries, ID: w.SeriesID},
-			Title:    w.Title,
-			Subtitle: sub,
-			Poster:   w.Cover,
-			Overview: w.Intro,
-			Children: w.EpisodeCnt,
-		})
+		return out, nil
 	}
-	return out, nil
+	// Fallback: search by base title (e.g. other seasons) or recommend feed
+	if base := strings.TrimRight(title, "0123456789第季 "); base != "" {
+		if page, sErr := m.Search(source, base, ""); sErr == nil && len(page.Items) > 0 {
+			var out []core.Item
+			for _, it := range page.Items {
+				if it.Ref.ID != id {
+					out = append(out, it)
+				}
+				if len(out) >= 10 {
+					break
+				}
+			}
+			if len(out) > 0 {
+				return out, nil
+			}
+		}
+	}
+	if page, rErr := m.Browse(source, core.Query{Section: "recommend"}); rErr == nil {
+		var out []core.Item
+		for _, it := range page.Items {
+			if it.Ref.ID != id {
+				out = append(out, it)
+			}
+			if len(out) >= 10 {
+				break
+			}
+		}
+		return out, nil
+	}
+	return nil, err
 }
 
 // ResolvePlay resolves a playable URL (or gateway stream path for CENC/HLS) for an episode.
@@ -658,4 +687,32 @@ func convertLegacyBrowse(sourceID string, res *legacymodel.BrowseResult, pageNum
 
 func trimSource(s string) string {
 	return strings.TrimPrefix(s, "online:")
+}
+
+// Danmaku fetches timed comments for an episode on supported platforms (hongguo, yeguo).
+func (m *Manager) Danmaku(source, seriesID, epID string) ([]core.Comment, error) {
+	switch trimSource(source) {
+	case "hongguo":
+		items, err := m.Hongguo.Danmaku(seriesID, epID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]core.Comment, 0, len(items))
+		for _, it := range items {
+			out = append(out, core.Comment{TimeSec: it.TimeSec, Text: it.Text})
+		}
+		return out, nil
+	case "yeguo":
+		items, err := m.Yeguo.Danmaku(seriesID, epID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]core.Comment, 0, len(items))
+		for _, it := range items {
+			out = append(out, core.Comment{TimeSec: it.TimeSec, Text: it.Text})
+		}
+		return out, nil
+	default:
+		return nil, nil
+	}
 }

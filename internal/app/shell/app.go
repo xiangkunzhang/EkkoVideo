@@ -20,6 +20,7 @@ import (
 	"github.com/xiangkunzhang/EkkoVideo/internal/app/player"
 	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
 	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/EkkoVideo/internal/danmaku"
 	"github.com/xiangkunzhang/EkkoVideo/internal/engine/mpv"
 	"github.com/xiangkunzhang/EkkoVideo/internal/engine/surface"
 	gwclient "github.com/xiangkunzhang/EkkoVideo/internal/gateway/client"
@@ -766,7 +767,20 @@ func (a *App) resumeWatchRecord(rec core.WatchRecord) {
 		return
 	}
 	if strings.HasPrefix(rec.Ref.Source, "online:") {
-		a.openDetail(core.Item{Ref: rec.Ref, Title: rec.Title, Poster: rec.Poster})
+		sid := rec.SeriesID
+		if sid == "" {
+			if rec.Ref.Kind == core.KindSeries {
+				sid = rec.Ref.ID
+			} else {
+				a.logger.Printf("resumeWatchRecord: missing seriesId for %+v", rec)
+				return
+			}
+		}
+		a.openDetail(core.Item{
+			Ref:    core.ItemRef{Source: rec.Ref.Source, Kind: core.KindSeries, ID: sid},
+			Title:  rec.Title,
+			Poster: rec.Poster,
+		})
 	}
 }
 
@@ -848,13 +862,62 @@ func (a *App) startQueue(q *core.Queue) {
 			if loadErr := a.mpv.Load(src); loadErr != nil {
 				a.playerState.Session.LastError = loadErr.Error()
 				a.playerState.Session.Phase = core.PhaseFailed
+				return
 			}
+			a.loadDanmakuForSource(gen, src)
 		})
 	})
 }
 
+func (a *App) loadDanmakuForSource(gen uint64, src *core.PlaySource) {
+	if a.playerState.DanmakuSched != nil {
+		a.playerState.DanmakuSched.Reset()
+	}
+	if src == nil {
+		return
+	}
+	if src.Kind == core.StreamLocalFile {
+		if sidecar := danmaku.DiscoverSidecar(src.URL); sidecar != "" {
+			safego.Go("dm-local", a.logger.Printf, func() {
+				items, err := danmaku.ParseFile(sidecar)
+				if err != nil || len(items) == 0 {
+					return
+				}
+				a.update(func() {
+					if a.playerState.Session != nil && a.playerState.Session.Generation == gen {
+						a.playerState.DanmakuSched.Load(items, a.settings.DanmakuKeywords)
+					}
+				})
+			})
+		}
+		return
+	}
+	if src.Danmaku != nil && a.gateway != nil {
+		ref := *src.Danmaku
+		safego.Go("dm-online", a.logger.Printf, func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			items, err := a.gateway.Danmaku(ctx, ref.Source, ref.SeriesID, ref.ItemID)
+			if err != nil {
+				a.logger.Printf("danmaku fetch failed (%s/%s): %v", ref.SeriesID, ref.ItemID, err)
+				return
+			}
+			a.logger.Printf("danmaku loaded (%s/%s): %d items", ref.SeriesID, ref.ItemID, len(items))
+			if len(items) == 0 {
+				return
+			}
+			a.update(func() {
+				if a.playerState.Session != nil && a.playerState.Session.Generation == gen {
+					a.playerState.DanmakuSched.Load(items, a.settings.DanmakuKeywords)
+				}
+			})
+		})
+	}
+}
+
 func (a *App) onMPVSnapshot(snap mpv.Snapshot) {
 	a.playerState.Snap = snap
+	a.playerState.SnapAt = time.Now()
 	sess := a.playerState.Session
 	if sess == nil || !a.onPlayer {
 		return
@@ -897,8 +960,21 @@ func (a *App) savePlaybackProgress() {
 	if sess == nil || sess.Source == nil || !a.playerState.Snap.Loaded {
 		return
 	}
+	var seriesID string
+	var epNo int
+	if sess.Queue != nil {
+		if act, ok := sess.Queue.Active(); ok {
+			seriesID = act.Extra["seriesId"]
+			epNo, _ = strconv.Atoi(act.Extra["ep"])
+			if epNo <= 0 {
+				epNo = act.Index
+			}
+		}
+	}
 	a.history.Record(core.WatchRecord{
 		Ref:      sess.Source.Ref,
+		SeriesID: seriesID,
+		Episode:  epNo,
 		Title:    sess.Source.Title,
 		Position: a.playerState.Snap.Position,
 		Duration: a.playerState.Snap.Duration,
@@ -909,6 +985,76 @@ func (a *App) savePlaybackProgress() {
 func (a *App) initPlayerCallbacks() {
 	st := &a.playerState
 	st.AspectRatio = a.settings.AspectRatio
+	st.DanmakuSched = danmaku.NewScheduler()
+	st.DanmakuRend = danmaku.NewRenderer()
+	if a.settings.DanmakuFontSize <= 0 {
+		a.settings.DanmakuEnabled = true
+		a.settings.DanmakuFontSize = 20
+	}
+	if a.settings.DanmakuOpacity <= 0 {
+		a.settings.DanmakuOpacity = 0.90
+	}
+	if a.settings.DanmakuSpeed <= 0 {
+		a.settings.DanmakuSpeed = 1.0
+	}
+	if a.settings.DanmakuArea <= 0 {
+		a.settings.DanmakuArea = 0.50
+	}
+	st.DanmakuCfg = danmaku.Config{
+		Enabled:  a.settings.DanmakuEnabled,
+		FontSize: a.settings.DanmakuFontSize,
+		Opacity:  a.settings.DanmakuOpacity,
+		Speed:    a.settings.DanmakuSpeed,
+		Area:     a.settings.DanmakuArea,
+		Keywords: a.settings.DanmakuKeywords,
+	}
+	syncDanmakuSettings := func() {
+		a.settings.DanmakuEnabled = st.DanmakuCfg.Enabled
+		a.settings.DanmakuFontSize = st.DanmakuCfg.FontSize
+		a.settings.DanmakuOpacity = st.DanmakuCfg.Opacity
+		a.settings.DanmakuSpeed = st.DanmakuCfg.Speed
+		a.settings.DanmakuArea = st.DanmakuCfg.Area
+		a.settingsStore.Put(a.settings)
+		// Re-rasterize active sprites immediately so adjustments take effect live.
+		for i := range st.DanmakuSched.Active {
+			it := &st.DanmakuSched.Active[i]
+			it.Sprite = st.DanmakuRend.MakeSprite(it.Text, it.Color, st.DanmakuCfg)
+		}
+	}
+	st.OnToggleDanmaku = func() {
+		st.DanmakuCfg.Enabled = !st.DanmakuCfg.Enabled
+		syncDanmakuSettings()
+		if st.DanmakuCfg.Enabled {
+			st.ShowOSD(time.Now(), "弹幕：开启")
+		} else {
+			st.ShowOSD(time.Now(), "弹幕：关闭")
+		}
+	}
+	st.OnDanmakuChanged = syncDanmakuSettings
+	st.OnLoadDanmakuFile = func() {
+		safego.Go("open-danmaku-dialog", a.logger.Printf, func() {
+			files, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+				Parent: a.win,
+				Title:  "选择弹幕文件 (XML / ASS)",
+				Filters: []mygo.FileFilter{
+					{Name: "弹幕文件", Extensions: []string{"xml", "ass", "ssa"}},
+				},
+			})
+			if err == nil && len(files) > 0 {
+				items, parseErr := danmaku.ParseFile(files[0])
+				a.update(func() {
+					if parseErr != nil {
+						st.ShowOSD(time.Now(), "弹幕解析失败")
+						return
+					}
+					st.DanmakuSched.Load(items, st.DanmakuCfg.Keywords)
+					st.DanmakuCfg.Enabled = true
+					syncDanmakuSettings()
+					st.ShowOSD(time.Now(), fmt.Sprintf("已加载 %d 条弹幕", len(items)))
+				})
+			}
+		})
+	}
 	st.OnBack = func() {
 		a.router.Back()
 		if a.router.Path() == "/play" {

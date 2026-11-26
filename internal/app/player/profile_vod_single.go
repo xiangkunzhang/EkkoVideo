@@ -164,6 +164,10 @@ func (p *VODSingleProfile) BottomBar(c *ui.Context, st *PlayerViewState) {
 				st.Touch(c.Now())
 				toggleMenu(st, "sub")
 			}
+			if pillBtn(c, "dm-btn", "弹", st.DanmakuCfg.Enabled || st.ActiveMenu == "danmaku").Clicked() {
+				st.Touch(c.Now())
+				toggleMenu(st, "danmaku")
+			}
 			aspectLabel := "比例"
 			if st.AspectRatio != "" && st.AspectRatio != "auto" {
 				aspectLabel = st.AspectRatio
@@ -300,6 +304,12 @@ func (p *VODSingleProfile) BindShortcuts(c *ui.Context, st *PlayerViewState) {
 			st.OnTogglePin()
 		}
 	})
+	c.OnShortcut(0, ui.KeyD, func() {
+		touch()
+		if st.OnToggleDanmaku != nil {
+			st.OnToggleDanmaku()
+		}
+	})
 	c.OnShortcut(0, ui.KeyL, func() {
 		touch()
 		st.DrawerOpen = !st.DrawerOpen
@@ -354,6 +364,8 @@ func (p *VODSingleProfile) BindShortcuts(c *ui.Context, st *PlayerViewState) {
 	})
 }
 
+func arLabel(s string) string { return s }
+
 func toggleMenu(st *PlayerViewState, name string) {
 	if st.ActiveMenu == name {
 		st.ActiveMenu = ""
@@ -405,6 +417,72 @@ func renderPopupMenu(c *ui.Context, st *PlayerViewState) {
 					if st.OnSelectTrack != nil {
 						st.OnSelectTrack("sub", 0)
 					}
+				}
+			}
+		case "danmaku":
+			onLabel := "弹幕：已开启 (D)"
+			if !st.DanmakuCfg.Enabled {
+				onLabel = "弹幕：已关闭 (D)"
+			}
+			if menuRow(c, "dm-toggle", onLabel, st.DanmakuCfg.Enabled).Clicked() {
+				if st.OnToggleDanmaku != nil {
+					st.OnToggleDanmaku()
+				}
+			}
+			ui.Row(c).FillWidth().Padding(4, 10).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "字号").FontSize(11.5).TextColor(ui.RGBA(255, 255, 255, 0.7)).Width(42)
+				for _, sz := range []float64{16, 20, 24, 28} {
+					if pillBtn(c, fmt.Sprintf("dm-sz-%.0f", sz), fmt.Sprintf("%.0f", sz), st.DanmakuCfg.FontSize == sz).Clicked() {
+						st.DanmakuCfg.FontSize = sz
+						if st.OnDanmakuChanged != nil {
+							st.OnDanmakuChanged()
+						}
+					}
+				}
+			})
+			ui.Row(c).FillWidth().Padding(4, 10).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "透明").FontSize(11.5).TextColor(ui.RGBA(255, 255, 255, 0.7)).Width(42)
+				for _, op := range []struct {
+					v float64
+					l string
+				}{{0.5, "50%"}, {0.75, "75%"}, {0.9, "90%"}, {1.0, "100%"}} {
+					if pillBtn(c, "dm-op-"+arLabel(op.l), op.l, st.DanmakuCfg.Opacity == op.v).Clicked() {
+						st.DanmakuCfg.Opacity = op.v
+						if st.OnDanmakuChanged != nil {
+							st.OnDanmakuChanged()
+						}
+					}
+				}
+			})
+			ui.Row(c).FillWidth().Padding(4, 10).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "区域").FontSize(11.5).TextColor(ui.RGBA(255, 255, 255, 0.7)).Width(42)
+				for _, ar := range []struct {
+					v float64
+					l string
+				}{{0.25, "1/4"}, {0.5, "1/2"}, {1.0, "全屏"}} {
+					if pillBtn(c, "dm-ar-"+ar.l, ar.l, st.DanmakuCfg.Area == ar.v).Clicked() {
+						st.DanmakuCfg.Area = ar.v
+						if st.OnDanmakuChanged != nil {
+							st.OnDanmakuChanged()
+						}
+					}
+				}
+			})
+			ui.Row(c).FillWidth().Padding(4, 10).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "速度").FontSize(11.5).TextColor(ui.RGBA(255, 255, 255, 0.7)).Width(42)
+				for _, sp := range []float64{0.75, 1.0, 1.5} {
+					if pillBtn(c, fmt.Sprintf("dm-sp-%.2f", sp), fmt.Sprintf("%.2gx", sp), st.DanmakuCfg.Speed == sp).Clicked() {
+						st.DanmakuCfg.Speed = sp
+						if st.OnDanmakuChanged != nil {
+							st.OnDanmakuChanged()
+						}
+					}
+				}
+			})
+			if menuRow(c, "dm-load-file", "加载本地 XML / ASS 弹幕…", false).Clicked() {
+				st.ActiveMenu = ""
+				if st.OnLoadDanmakuFile != nil {
+					st.OnLoadDanmakuFile()
 				}
 			}
 		}

@@ -98,6 +98,15 @@ func (g *gatewayApp) registerProtected(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, ps)
 	})
+	mux.HandleFunc("GET /v1/danmaku", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		items, err := g.online.Danmaku(q.Get("source"), q.Get("series_id"), q.Get("ep_id"))
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	})
 }
 
 func (g *gatewayApp) registerStream(mux *http.ServeMux) {

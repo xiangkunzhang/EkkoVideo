@@ -59,7 +59,7 @@ func NewSupervisor(executable string, args []string, logf func(string, ...any), 
 		args:       args,
 		logf:       logf,
 		onChange:   onChange,
-		httpClient: &http.Client{Timeout: 5 * time.Second},
+		httpClient: &http.Client{Timeout: 25 * time.Second},
 	}
 }
 

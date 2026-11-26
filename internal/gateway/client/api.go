@@ -132,3 +132,17 @@ func (s *Supervisor) Resolve(ctx context.Context, source, seriesID, vid string, 
 	}
 	return &res, nil
 }
+
+func (s *Supervisor) Danmaku(ctx context.Context, source, seriesID, epID string) ([]core.Comment, error) {
+	v := url.Values{}
+	v.Set("source", source)
+	v.Set("series_id", seriesID)
+	v.Set("ep_id", epID)
+	var res struct {
+		Items []core.Comment `json:"items"`
+	}
+	if err := s.getJSON(ctx, "/v1/danmaku?"+v.Encode(), &res); err != nil {
+		return nil, err
+	}
+	return res.Items, nil
+}
