@@ -66,6 +66,15 @@ func Page(c *ui.Context, cfg *core.Settings, diag Diagnostics, act Actions) {
 							}
 						}
 					})
+					row(c, "显示更多在线平台", "开启后在侧边栏显示红果之外的其他在线短剧平台", func() {
+						v := cfg.ShowExtraOnlinePlatforms
+						if ui.Switch(c.Key("cfg-extra-platforms"), &v).Changed() {
+							cfg.ShowExtraOnlinePlatforms = v
+							if act.OnSave != nil {
+								act.OnSave()
+							}
+						}
+					})
 				})
 
 				// Gateway & engine diagnostics

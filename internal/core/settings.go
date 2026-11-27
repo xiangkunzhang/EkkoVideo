@@ -17,6 +17,8 @@ type Settings struct {
 	DanmakuSpeed    float64  `json:"danmakuSpeed"`
 	DanmakuArea     float64  `json:"danmakuArea"`
 	DanmakuKeywords []string `json:"danmakuKeywords,omitempty"`
+
+	ShowExtraOnlinePlatforms bool `json:"showExtraOnlinePlatforms,omitempty"`
 }
 
 func DefaultSettings() Settings {

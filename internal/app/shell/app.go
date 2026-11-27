@@ -608,6 +608,9 @@ func (a *App) sidebar(c *ui.Context) {
 		})
 		ui.SidebarSection(c, "在线平台", nil, func() {
 			for _, p := range a.onlinePlatforms {
+				if p.ID != "online:hongguo" && !a.settings.ShowExtraOnlinePlatforms {
+					continue
+				}
 				short := strings.TrimPrefix(p.ID, "online:")
 				ui.SidebarItem(c.Key("sb-"+p.ID), "/online/"+short, theme.IconGlobe, p.Name)
 			}
