@@ -31,7 +31,11 @@ for TARGET in "${TARGET_LIST[@]}"; do
     exit 1
   fi
 
-  if [[ -n "$SRC_MPV" ]]; then
+  if [[ -f "assets/darwin/libmpv-universal.tar.gz" ]]; then
+    echo "==> [$PLAT] Extracting assets/darwin/libmpv-universal.tar.gz..."
+    mkdir -p "$PLAYER_DIR"
+    tar -xzf "assets/darwin/libmpv-universal.tar.gz" -C "$PLAYER_DIR"
+  elif [[ -n "$SRC_MPV" ]]; then
     echo "==> [$PLAT] Bundling libmpv from $SRC_MPV..."
     mkdir -p "$PLAYER_DIR"
     python3 - "$SRC_MPV" "$PLAYER_DIR" <<'PY'

@@ -10,6 +10,7 @@
 *.pkg
 *.zip
 *.tar.gz
+!assets/darwin/*.tar.gz
 
 # Go & MyGo caches
 /.gocache/

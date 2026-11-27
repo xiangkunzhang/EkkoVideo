@@ -25,10 +25,15 @@ if [[ -z "$WIN_DLL" ]]; then
 fi
 
 if [[ -n "$WIN_DLL" && -f "$WIN_DLL" ]]; then
-  echo "==> Bundling $(basename "$WIN_DLL") into $OUT_DIR..."
-  cp "$WIN_DLL" "${OUT_DIR}/libmpv-2.dll"
+  echo "==> Bundling $(basename "$WIN_DLL") into $OUT_DIR/resources/player..."
+  mkdir -p "${OUT_DIR}/resources/player"
+  cp "$WIN_DLL" "${OUT_DIR}/resources/player/libmpv-2.dll"
+elif [[ -f "assets/windows/libmpv-2.dll.gz" ]]; then
+  echo "==> Extracting assets/windows/libmpv-2.dll.gz into $OUT_DIR/resources/player..."
+  mkdir -p "${OUT_DIR}/resources/player"
+  gzip -dc "assets/windows/libmpv-2.dll.gz" > "${OUT_DIR}/resources/player/libmpv-2.dll"
 else
-  echo "warning: libmpv-2.dll not found in assets/windows/; copy libmpv-2.dll next to Velan.exe before running on Windows." >&2
+  echo "warning: libmpv-2.dll(.gz) not found in assets/windows/; copy libmpv-2.dll into ${OUT_DIR}/resources/player/ before running on Windows." >&2
 fi
 
 echo "==> Packaging build/Velan-windows-amd64.zip..."
