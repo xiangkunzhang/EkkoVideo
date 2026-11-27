@@ -41,7 +41,8 @@ http://stream1/hunan.m3u8
 }
 
 func TestParseXMLTVAndGzip(t *testing.T) {
-	now := time.Date(2026, 11, 26, 15, 0, 0, 0, time.Local)
+	cst := time.FixedZone("CST", 8*3600)
+	now := time.Date(2026, 11, 26, 15, 0, 0, 0, cst)
 	xmlBody := `<?xml version="1.0" encoding="UTF-8"?>
 <tv>
   <channel id="cctv1"><display-name>CCTV-1 综合</display-name></channel>

@@ -89,11 +89,14 @@ jobs:
             dist/checksums.txt
 
       - name: Update Homebrew Tap
-        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "HOMEBREW_TAP_TOKEN is not set, skipping Homebrew Tap update."
+            exit 0
+          fi
           VERSION="${TAG_NAME#v}"
           ARM_SHA="$(sha256sum dist/Velan-darwin-arm64.dmg | awk '{print $1}')"
           INTEL_SHA="$(sha256sum dist/Velan-darwin-amd64.dmg | awk '{print $1}')"
