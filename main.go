@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"flag"
 	"log"
 	"os"
@@ -14,8 +15,20 @@ import (
 	"github.com/xiangkunzhang/Velan/internal/gateway/server"
 )
 
-//go:embed VERSION
-var appVersion string
+//go:embed mygo.json
+var mygoManifest []byte
+
+func resolveAppVersion() string {
+	var cfg struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(mygoManifest, &cfg); err == nil {
+		if v := strings.TrimSpace(cfg.Version); v != "" {
+			return v
+		}
+	}
+	return "dev"
+}
 
 func main() {
 	gatewayMode := flag.Bool("gateway", false, "run as isolated VelanGateway subprocess")
@@ -33,5 +46,5 @@ func main() {
 		return
 	}
 
-	shell.Run(strings.TrimSpace(appVersion), flag.Args())
+	shell.Run(resolveAppVersion(), flag.Args())
 }
