@@ -96,3 +96,23 @@ func TestWSLiveDanmakuProbe(t *testing.T) {
 		t.Logf("%s WS danmaku got=%d sample=%q (room=%s)", plat, got, sample, rooms[0].Ref.ID)
 	}
 }
+
+func TestPickPreferredLine(t *testing.T) {
+	lines := []core.Line{
+		{ID: "0", Label: "原画 · 线路1"},
+		{ID: "1", Label: "蓝光 · 线路2"},
+		{ID: "2", Label: "高清 · 线路1"},
+	}
+	if got := PickPreferredLine(lines, "蓝光 · 线路2"); got != 1 {
+		t.Fatalf("exact match = %d, want 1", got)
+	}
+	if got := PickPreferredLine(lines, "高清 · 线路9"); got != 2 {
+		t.Fatalf("prefix match = %d, want 2", got)
+	}
+	if got := PickPreferredLine(lines, "超清"); got != 0 {
+		t.Fatalf("fallback = %d, want 0", got)
+	}
+	if got := PickPreferredLine(nil, "原画"); got != 0 {
+		t.Fatalf("empty lines = %d, want 0", got)
+	}
+}

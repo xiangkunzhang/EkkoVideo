@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests & vet
+        run: |
+          go test -race ./internal/app/... ./internal/core/... ./internal/danmaku/... ./internal/gateway/... ./internal/infra/... ./internal/provider/local/... ./internal/provider/iptv/...
+          go vet ./...
+          GOOS=windows GOARCH=amd64 go vet ./...
+          go tool mygo vet .
+
+  build-macos:
+    needs: verify
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build macOS DMGs (arm64 & amd64)
+        run: bash scripts/build-macos.sh darwin/amd64,darwin/arm64
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmgs
+          path: |
+            build/Velan-darwin-arm64.dmg
+            build/Velan-darwin-amd64.dmg
+
+  build-windows:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build Windows x64 zip
+        run: bash scripts/build-windows.sh
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: build/Velan-windows-amd64.zip
+
+  publish-release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum Velan-* > checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/Velan-darwin-arm64.dmg
+            dist/Velan-darwin-amd64.dmg
+            dist/Velan-windows-amd64.zip
+            dist/checksums.txt
+
+      - name: Update Homebrew Tap
+        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG_NAME#v}"
+          ARM_SHA="$(sha256sum dist/Velan-darwin-arm64.dmg | awk '{print $1}')"
+          INTEL_SHA="$(sha256sum dist/Velan-darwin-amd64.dmg | awk '{print $1}')"
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/xiangkunzhang/homebrew-tap.git" tap
+          cd tap
+          cat > Casks/velan.rb <<EOF
+          cask "velan" do
+            version "${VERSION}"
+
+            on_arm do
+              sha256 "${ARM_SHA}"
+              url "https://github.com/xiangkunzhang/Velan/releases/download/v#{version}/Velan-darwin-arm64.dmg"
+            end
+
+            on_intel do
+              sha256 "${INTEL_SHA}"
+              url "https://github.com/xiangkunzhang/Velan/releases/download/v#{version}/Velan-darwin-amd64.dmg"
+            end
+
+            name "Velan"
+            desc "Lightweight cross-platform desktop player for short dramas, live streams, and IPTV"
+            homepage "https://github.com/xiangkunzhang/Velan"
+
+            app "Velan.app"
+
+            zap trash: [
+              "~/Library/Application Support/Velan",
+              "~/Library/Preferences/com.velan.app.plist",
+            ]
+          end
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(velan): release v${VERSION}" || exit 0
+          git push

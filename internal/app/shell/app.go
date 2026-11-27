@@ -482,6 +482,7 @@ func (a *App) view(c *ui.Context) {
 				list.LiveGridPage(c, &a.liveGrid, a.img, list.LiveGridActions{
 					OnSelectPlatform: func(id string) {
 						a.liveGrid.PlatformID = id
+						a.liveGrid.SearchQuery = ""
 						a.liveGrid.Category = ""
 						for _, p := range a.liveGrid.Platforms {
 							if p.ID == id && len(p.Categories) > 0 {
@@ -492,6 +493,7 @@ func (a *App) view(c *ui.Context) {
 						a.loadLiveRooms(false)
 					},
 					OnSelectCategory: func(cat string) {
+						a.liveGrid.SearchQuery = ""
 						a.liveGrid.Category = cat
 						a.loadLiveRooms(false)
 					},
@@ -499,7 +501,13 @@ func (a *App) view(c *ui.Context) {
 						a.liveGrid.SearchQuery = q
 						a.searchLiveRooms(q)
 					},
-					OnRefresh:   func() { a.loadLiveRooms(false) },
+					OnRefresh: func() {
+						if strings.TrimSpace(a.liveGrid.SearchQuery) != "" {
+							a.searchLiveRooms(a.liveGrid.SearchQuery)
+							return
+						}
+						a.loadLiveRooms(false)
+					},
 					OnLoadMore:  func() { a.loadLiveRooms(true) },
 					OnOpenRoom:  a.playLiveRoom,
 					OnToggleFav: a.toggleFav,
@@ -1256,11 +1264,24 @@ func (a *App) startQueue(q *core.Queue) {
 				}
 				return
 			}
+			prefLiveLine := 0
 			if strings.HasPrefix(item.Ref.Source, live.SourcePrefix) {
 				if a.liveProfile != nil {
 					a.liveProfile.Streamer = item.Extra["streamer"]
 					a.liveProfile.OnlineCount = item.Extra["online"]
+					a.liveProfile.IsFavorited = a.favorites.Has(item.Ref)
 					a.liveProfile.ChatList = nil
+				}
+				plat := strings.TrimPrefix(item.Ref.Source, live.SourcePrefix)
+				if pref := a.settings.LiveLinePref[plat]; pref != "" && len(src.Lines) > 0 {
+					idx := live.PickPreferredLine(src.Lines, pref)
+					if idx >= 0 && idx < len(src.Lines) {
+						prefLiveLine = idx
+						ln := src.Lines[idx]
+						src.URL = ln.URL
+						src.Kind = ln.Kind
+						src.Headers = ln.Headers
+					}
 				}
 			} else if item.Ref.Source == iptv.SourceID {
 				if a.iptvCurChannel != "" && a.iptvCurChannel != item.Ref.ID {
@@ -1292,6 +1313,9 @@ func (a *App) startQueue(q *core.Queue) {
 			}
 			if !a.playerState.Session.SetResolved(gen, src) {
 				return
+			}
+			if prefLiveLine > 0 {
+				a.playerState.Session.LineIndex = prefLiveLine
 			}
 			if loadErr := a.mpv.Load(src); loadErr != nil {
 				a.playerState.Session.LastError = loadErr.Error()
@@ -1391,6 +1415,19 @@ func (a *App) onMPVSnapshot(snap mpv.Snapshot) {
 		}
 	}
 	if snap.EOF && sess.Phase == core.PhasePlaying {
+		if a.isLivePlayback() {
+			if retry, lineIdx := sess.HandleFailure("直播流已断开"); retry && sess.Source != nil {
+				if lineIdx >= 0 && lineIdx < len(sess.Source.Lines) {
+					line := sess.Source.Lines[lineIdx]
+					sess.Source.URL = line.URL
+					sess.Source.Kind = line.Kind
+					sess.Source.Headers = line.Headers
+				}
+				_ = a.mpv.Load(sess.Source)
+				a.playerState.ShowOSD(time.Now(), "直播流断开，正在重连…")
+			}
+			return
+		}
 		sess.Phase = core.PhaseEnded
 		a.savePlaybackProgress()
 		if a.settings.AutoNext && sess.Queue != nil {
@@ -1601,6 +1638,26 @@ func (a *App) initPlayerCallbacks() {
 					st.DanmakuCfg.Enabled = true
 					syncDanmakuSettings()
 					st.ShowOSD(time.Now(), fmt.Sprintf("已加载 %d 条弹幕", len(items)))
+				})
+			}
+		})
+	}
+	st.OnLoadSubtitleFile = func() {
+		safego.Go("open-sub-dialog", a.logger.Printf, func() {
+			files, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+				Parent: a.win,
+				Title:  "选择外挂字幕文件 (SRT / ASS / VTT)",
+				Filters: []mygo.FileFilter{
+					{Name: "字幕文件", Extensions: []string{"srt", "ass", "ssa", "vtt", "sub"}},
+				},
+			})
+			if err == nil && len(files) > 0 {
+				path := files[0]
+				a.update(func() {
+					if a.mpv != nil {
+						a.mpv.Command("sub-add", path, "select")
+						st.ShowOSD(time.Now(), "已加载字幕: "+filepath.Base(path))
+					}
 				})
 			}
 		})
@@ -1846,10 +1903,38 @@ func (a *App) initLiveCallbacks() {
 		sess.Source.URL = line.URL
 		sess.Source.Kind = line.Kind
 		sess.Source.Headers = line.Headers
+		if plat := strings.TrimPrefix(sess.Source.Ref.Source, live.SourcePrefix); plat != "" {
+			if a.settings.LiveLinePref == nil {
+				a.settings.LiveLinePref = make(map[string]string)
+			}
+			a.settings.LiveLinePref[plat] = line.Label
+			a.settingsStore.Put(a.settings)
+		}
 		if a.mpv != nil {
 			_ = a.mpv.Load(sess.Source)
 		}
 		a.playerState.ShowOSD(time.Now(), "切换线路: "+line.Label)
+	}
+	p.OnToggleFav = func() {
+		sess := a.playerState.Session
+		if sess == nil || sess.Queue == nil {
+			return
+		}
+		it, ok := sess.Queue.Active()
+		if !ok {
+			return
+		}
+		faved := a.favorites.Toggle(it)
+		a.favoritesStore.Put(a.favorites.Items)
+		p.IsFavorited = faved
+		if faved {
+			a.playerState.ShowOSD(time.Now(), "★ 已关注主播")
+		} else {
+			a.playerState.ShowOSD(time.Now(), "已取消关注")
+		}
+		if a.liveGrid.PlatformID == "__fav__" {
+			a.loadLiveRooms(false)
+		}
 	}
 	p.OnRefreshStream = func() {
 		sess := a.playerState.Session
@@ -1869,9 +1954,15 @@ func (a *App) initLiveCallbacks() {
 
 func (a *App) loadLiveRooms(appendMore bool) {
 	if a.liveGrid.PlatformID == "__fav__" {
+		q := strings.ToLower(strings.TrimSpace(a.liveGrid.SearchQuery))
 		var rooms []core.Item
 		for _, f := range a.favorites.Items {
 			if f.Item.Ref.Kind == core.KindLiveRoom || strings.HasPrefix(f.Item.Ref.Source, live.SourcePrefix) {
+				if q != "" && !strings.Contains(strings.ToLower(f.Item.Title), q) &&
+					!strings.Contains(strings.ToLower(f.Item.Subtitle), q) &&
+					!strings.Contains(strings.ToLower(f.Item.Ref.ID), q) {
+					continue
+				}
 				rooms = append(rooms, f.Item)
 			}
 		}
@@ -1932,15 +2023,11 @@ func (a *App) loadLiveRooms(appendMore bool) {
 
 func (a *App) searchLiveRooms(q string) {
 	q = strings.TrimSpace(q)
-	if q == "" {
+	if q == "" || a.liveGrid.PlatformID == "__fav__" {
 		a.loadLiveRooms(false)
 		return
 	}
 	plat := a.liveGrid.PlatformID
-	if plat == "__fav__" {
-		plat = "bilibili"
-		a.liveGrid.PlatformID = plat
-	}
 	a.liveGrid.Loading = true
 	a.liveGrid.Err = ""
 	a.liveGrid.Rooms = nil

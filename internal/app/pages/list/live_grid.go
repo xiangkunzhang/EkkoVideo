@@ -56,6 +56,13 @@ func LiveGridPage(c *ui.Context, st *LiveGridState, img *imageloader.Loader, act
 			if sf.Submitted() && act.OnSearch != nil {
 				act.OnSearch(st.SearchQuery)
 			}
+			if ui.Button(c.Key("live-search-go"), "搜索").Clicked() && act.OnSearch != nil {
+				act.OnSearch(st.SearchQuery)
+			}
+			if st.SearchQuery != "" && ui.Button(c.Key("live-search-clr"), "清除").Clicked() && act.OnSearch != nil {
+				st.SearchQuery = ""
+				act.OnSearch("")
+			}
 			if ui.Button(c.Key("live-refresh"), "刷新").Clicked() && act.OnRefresh != nil {
 				act.OnRefresh()
 			}

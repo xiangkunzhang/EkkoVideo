@@ -60,6 +60,7 @@ type PlayerViewState struct {
 	OnToggleDanmaku    func()
 	OnDanmakuChanged   func()
 	OnLoadDanmakuFile  func()
+	OnLoadSubtitleFile func()
 	OnRetry            func()
 }
 
@@ -85,7 +86,7 @@ func (st *PlayerViewState) ChromeVisible(now time.Time) bool {
 	if st.Snap.Paused || st.DrawerOpen || st.ActiveMenu != "" || st.Seeking {
 		return true
 	}
-	if st.Session != nil && (st.Session.Phase == core.PhaseResolving || st.Session.Phase == core.PhaseLoading || st.Session.Phase == core.PhaseFailed) {
+	if st.Session != nil && (st.Session.Phase == core.PhaseResolving || st.Session.Phase == core.PhaseLoading || st.Session.Phase == core.PhaseRecovering || st.Session.Phase == core.PhaseFailed) {
 		return true
 	}
 	if st.LastActivity.IsZero() {
@@ -174,6 +175,12 @@ func Stage(c *ui.Context, st *PlayerViewState, prof PlayerProfile, surf surface.
 				case core.PhaseResolving, core.PhaseLoading:
 					ui.Column(c).Absolute().Fill().Center().Background(ui.Hex("#0B101B")).Children(func() {
 						theme.BrandLoader(c, 84, "正在准备播放…", ui.RGBA(255, 255, 255, 0.85), true)
+					})
+				case core.PhaseRecovering:
+					ui.Column(c).Absolute().Fill().Center().PassThrough().Children(func() {
+						ui.Box(c).Padding(14, 22).Radius(14).Background(ui.RGBA(10, 14, 22, 0.72)).Children(func() {
+							theme.BrandLoader(c, 58, "连接断开，正在重连…", ui.RGBA(255, 255, 255, 0.90), true)
+						})
 					})
 				case core.PhaseBuffering:
 					if !st.BufferingSince.IsZero() && now.Sub(st.BufferingSince) < 250*time.Millisecond {

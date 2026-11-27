@@ -18,7 +18,8 @@ type Settings struct {
 	DanmakuArea     float64  `json:"danmakuArea"`
 	DanmakuKeywords []string `json:"danmakuKeywords,omitempty"`
 
-	ShowExtraOnlinePlatforms bool `json:"showExtraOnlinePlatforms,omitempty"`
+	ShowExtraOnlinePlatforms bool              `json:"showExtraOnlinePlatforms,omitempty"`
+	LiveLinePref             map[string]string `json:"liveLinePref,omitempty"`
 }
 
 func DefaultSettings() Settings {

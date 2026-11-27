@@ -125,3 +125,25 @@ func isDigits(s string) bool {
 	}
 	return true
 }
+
+// PickPreferredLine picks the best matching line index for a remembered quality/CDN label.
+// Falls back to matching the quality prefix (before " · ") and then 0.
+func PickPreferredLine(lines []core.Line, pref string) int {
+	if pref == "" || len(lines) == 0 {
+		return 0
+	}
+	for i, ln := range lines {
+		if ln.Label == pref {
+			return i
+		}
+	}
+	prefPrefix := strings.SplitN(pref, " · ", 2)[0]
+	if prefPrefix != "" {
+		for i, ln := range lines {
+			if strings.SplitN(ln.Label, " · ", 2)[0] == prefPrefix {
+				return i
+			}
+		}
+	}
+	return 0
+}

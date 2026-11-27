@@ -429,27 +429,30 @@ func renderPopupMenuAt(c *ui.Context, st *PlayerViewState, bottomOff float32) {
 			tracks := filterTracks(st.Snap.Tracks, st.ActiveMenu)
 			if len(tracks) == 0 {
 				ui.Text(c, "无可用轨道").FontSize(12).TextColor(ui.RGBA(255, 255, 255, 0.6)).Padding(4, 6)
-				return
-			}
-			for _, tr := range tracks {
-				label := tr.Title
-				if label == "" {
-					label = fmt.Sprintf("轨道 #%d (%s)", tr.ID, tr.Lang)
-				} else if tr.Lang != "" {
-					label = fmt.Sprintf("%s [%s]", label, tr.Lang)
-				}
-				if menuRow(c, fmt.Sprintf("tr-%s-%d", tr.Type, tr.ID), label, tr.Selected).Clicked() {
-					st.ActiveMenu = ""
-					if st.OnSelectTrack != nil {
-						st.OnSelectTrack(tr.Type, tr.ID)
+			} else {
+				for _, tr := range tracks {
+					label := formatTrackLabel(tr)
+					if menuRow(c, fmt.Sprintf("tr-%s-%d", tr.Type, tr.ID), label, tr.Selected).Clicked() {
+						st.ActiveMenu = ""
+						if st.OnSelectTrack != nil {
+							st.OnSelectTrack(tr.Type, tr.ID)
+						}
 					}
 				}
 			}
 			if st.ActiveMenu == "sub" {
-				if menuRow(c, "sub-off", "关闭字幕", false).Clicked() {
-					st.ActiveMenu = ""
-					if st.OnSelectTrack != nil {
-						st.OnSelectTrack("sub", 0)
+				if len(tracks) > 0 {
+					if menuRow(c, "sub-off", "关闭字幕", false).Clicked() {
+						st.ActiveMenu = ""
+						if st.OnSelectTrack != nil {
+							st.OnSelectTrack("sub", 0)
+						}
+					}
+				}
+				if st.OnLoadSubtitleFile != nil {
+					if menuRow(c, "sub-load-file", "加载本地字幕 (SRT / ASS / VTT)…", false).Clicked() {
+						st.ActiveMenu = ""
+						st.OnLoadSubtitleFile()
 					}
 				}
 			}
@@ -545,6 +548,23 @@ func filterTracks(tracks []mpv.Track, typ string) []mpv.Track {
 		}
 	}
 	return out
+}
+
+func formatTrackLabel(tr mpv.Track) string {
+	label := tr.Title
+	if label == "" {
+		if tr.Lang != "" {
+			label = fmt.Sprintf("轨道 #%d (%s)", tr.ID, tr.Lang)
+		} else {
+			label = fmt.Sprintf("轨道 #%d", tr.ID)
+		}
+	} else if tr.Lang != "" {
+		label = fmt.Sprintf("%s [%s]", label, tr.Lang)
+	}
+	if tr.External {
+		label += " · 外挂"
+	}
+	return label
 }
 
 func menuRow(c *ui.Context, key, label string, active bool) ui.Element {

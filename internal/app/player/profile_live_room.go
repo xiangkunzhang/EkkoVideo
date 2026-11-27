@@ -16,6 +16,7 @@ type LiveRoomProfile struct {
 	DrawerTab   int // 0 = chat danmaku, 1 = room list
 	Streamer    string
 	OnlineCount string
+	IsFavorited bool
 	Images      *imageloader.Loader
 	ChatList    []live.ChatMessage
 	ChatState   ui.ListState
@@ -23,6 +24,7 @@ type LiveRoomProfile struct {
 	OnSelectLine    func(lineIdx int)
 	OnRefreshStream func()
 	OnClearChat     func()
+	OnToggleFav     func()
 }
 
 func NewLiveRoomProfile() *LiveRoomProfile { return &LiveRoomProfile{} }
@@ -53,6 +55,16 @@ func (p *LiveRoomProfile) TopBar(c *ui.Context, st *PlayerViewState) {
 			ui.Box(c).Padding(2, 8).Radius(5).Background(ui.RGBA(255, 255, 255, 0.1)).Children(func() {
 				ui.Text(c, p.OnlineCount+" 人气").FontSize(11).TextColor(ui.RGBA(255, 255, 255, 0.85)).FontFeatures("tnum")
 			})
+		}
+		if p.OnToggleFav != nil {
+			favLabel := "☆ 关注"
+			if p.IsFavorited {
+				favLabel = "★ 已关注"
+			}
+			if pillBtn(c, "lr-fav", favLabel, p.IsFavorited).Clicked() {
+				st.Touch(c.Now())
+				p.OnToggleFav()
+			}
 		}
 		if iconBtn(c, "lr-pin", theme.IconPin, "置顶", st.AlwaysOnTop).Clicked() && st.OnTogglePin != nil {
 			st.Touch(c.Now())
