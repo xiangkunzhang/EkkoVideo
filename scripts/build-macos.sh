@@ -84,5 +84,15 @@ PY
   codesign --force --deep --sign - "$APP"
   touch "$APP" "${APP}/Contents/Info.plist"
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" 2>/dev/null || true
-  echo "==> Done: $APP"
+
+  DMG_PATH="build/Velan-${PLAT}.dmg"
+  echo "==> [$PLAT] Creating $DMG_PATH..."
+  STAGE_DIR="$(mktemp -d)"
+  ditto "$APP" "${STAGE_DIR}/Velan.app"
+  ln -s /Applications "${STAGE_DIR}/Applications"
+  rm -f "$DMG_PATH"
+  hdiutil create -volname "Velan" -srcfolder "$STAGE_DIR" -ov -format UDZO "$DMG_PATH" >/dev/null
+  rm -rf "$STAGE_DIR"
+
+  echo "==> Done: $APP and $DMG_PATH"
 done

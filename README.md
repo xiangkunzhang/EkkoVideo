@@ -51,6 +51,23 @@ Velan (Main GUI Process: MyGo + purego libmpv)
 
 For full design details, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Installation
+
+### macOS (Homebrew)
+```bash
+brew tap xiangkunzhang/tap
+brew trust xiangkunzhang/tap   # Required on Homebrew 7+
+brew install --cask --no-quarantine xiangkunzhang/tap/velan
+```
+
+### Direct Download (macOS & Windows)
+Download the latest `.dmg` (macOS Apple Silicon / Intel) or `.zip` (Windows x64) from [GitHub Releases](https://github.com/xiangkunzhang/Velan/releases).
+
+> **macOS Gatekeeper note**: Release builds are ad-hoc signed. If downloaded directly via browser and blocked by Gatekeeper, drag `Velan.app` to **Applications** and run:
+> ```bash
+> xattr -cr /Applications/Velan.app
+> ```
+
 ## Build from Source
 
 ### Prerequisites

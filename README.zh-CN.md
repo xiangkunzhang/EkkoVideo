@@ -20,6 +20,23 @@
 - **IPTV 电视直播（M3U + XMLTV）**：同名频道多线路自动合并与故障自愈、`.xml`/`.xml.gz` EPG 节目单与实时进度条、台标展示、收藏置顶、1 秒防抖换台与数字选台。
 - **纯净直播间（有弹幕、无礼物）**：独立 16:9 宽屏直播广场与 `LiveRoomProfile`，支持 B站直播 / 虎牙 / 斗鱼实时聊天弹幕、线路切换与快速切台，彻底屏蔽礼物与打赏干扰。
 
+## 安装方式
+
+### macOS（Homebrew 推荐）
+```bash
+brew tap xiangkunzhang/tap
+brew trust xiangkunzhang/tap   # Homebrew 7+ 需要先信任第三方 Tap
+brew install --cask --no-quarantine xiangkunzhang/tap/velan
+```
+
+### 直接下载（macOS / Windows）
+前往 [GitHub Releases](https://github.com/xiangkunzhang/Velan/releases) 下载对应架构的 `.dmg`（macOS Apple Silicon / Intel）或 `.zip`（Windows x64）。
+
+> **macOS 提示**：当前安装包为自签名（ad-hoc）。若通过浏览器直接下载后被 Gatekeeper 拦截，请将 `Velan.app` 拖入「应用程序」后在终端执行：
+> ```bash
+> xattr -cr /Applications/Velan.app
+> ```
+
 ## 快速构建
 
 ```bash
