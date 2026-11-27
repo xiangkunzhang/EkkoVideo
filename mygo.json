@@ -1,7 +1,7 @@
 {
   "name": "Velan",
   "identifier": "com.velan.app",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "copyright": "© 2026 Velan Contributors",
   "out": "build",
   "macos": {
