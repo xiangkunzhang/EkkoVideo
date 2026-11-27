@@ -73,6 +73,21 @@ func TestShellNavigationAndOnlineFlowHeadless(t *testing.T) {
 		t.Fatalf("online grid path=%q texts=%v", a.router.Path(), tt.Texts())
 	}
 
+	a.iptvList.Channels = []core.Item{{
+		Ref:      core.ItemRef{Source: "iptv", Kind: core.KindChannel, ID: "cctv1"},
+		Title:    "CCTV-1 综合",
+		Subtitle: "央视",
+		Playable: true,
+	}}
+	a.iptvList.Groups = []string{"央视"}
+	if err := tt.Click("IPTV 直播"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(1e9)
+	if a.router.Path() != "/iptv" || !tt.HasText("CCTV-1 综合") {
+		t.Fatalf("iptv path=%q texts=%v", a.router.Path(), tt.Texts())
+	}
+
 	if err := tt.Click("设置与诊断"); err != nil {
 		t.Fatal(err)
 	}

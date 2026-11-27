@@ -28,6 +28,7 @@ import (
 	"github.com/xiangkunzhang/EkkoVideo/internal/infra/logx"
 	"github.com/xiangkunzhang/EkkoVideo/internal/infra/safego"
 	"github.com/xiangkunzhang/EkkoVideo/internal/infra/store"
+	"github.com/xiangkunzhang/EkkoVideo/internal/provider/iptv"
 	"github.com/xiangkunzhang/EkkoVideo/internal/provider/local"
 )
 
@@ -40,6 +41,7 @@ type App struct {
 
 	registry *core.Registry
 	local    *local.Provider
+	iptvMgr  *iptv.Manager
 	gateway  *gwclient.Supervisor
 	gwStatus gwclient.Status
 
@@ -49,12 +51,14 @@ type App struct {
 	history        *core.History
 	favoritesStore *store.Store[[]core.FavoriteItem]
 	favorites      *core.Favorites
+	sourcesStore   *store.Store[[]iptv.Subscription]
 	img            *imageloader.Loader
 
 	section     string
 	sideShown   float32
 	homeList    ui.ListState
 	fileBrowser list.FileBrowserState
+	iptvList    list.ChannelListState
 
 	// Online platforms & poster grids
 	onlinePlatforms []core.ProviderInfo
@@ -63,18 +67,25 @@ type App struct {
 	detailState     detail.State
 	detailCancel    context.CancelFunc
 
-	// Open URL modal
-	urlModalOpen bool
-	urlInput     string
-	urlField     ui.Handle
+	// Open URL / IPTV subscription modals
+	urlModalOpen  bool
+	urlInput      string
+	urlField      ui.Handle
+	iptvModalOpen bool
+	iptvSubName   string
+	iptvSubURL    string
+	iptvSubEPG    string
 
 	// Active player
-	mpv           *mpv.Engine
-	surf          surface.VideoSurface
-	playerState   player.PlayerViewState
-	vodProfile    *player.VODSingleProfile
-	seriesProfile *player.VODSeriesProfile
-	onPlayer      bool
+	mpv             *mpv.Engine
+	surf            surface.VideoSurface
+	playerState     player.PlayerViewState
+	vodProfile      *player.VODSingleProfile
+	seriesProfile   *player.VODSeriesProfile
+	iptvProfile     *player.IPTVProfile
+	iptvPrevChannel string
+	iptvCurChannel  string
+	onPlayer        bool
 }
 
 // Run starts the EkkoVideo desktop GUI.
@@ -149,6 +160,9 @@ func Run(version string, initialFiles []string) {
 
 		a.startGateway()
 		a.loadFolder(a.settings.LastFolder)
+		if len(a.iptvMgr.Subscriptions()) > 0 {
+			a.refreshIPTV()
+		}
 
 		for _, f := range initialFiles {
 			if !strings.HasPrefix(f, "-") && local.IsVideoFile(f) {
@@ -168,10 +182,13 @@ func NewApp(version, dataDir, cacheDir string, logger *logx.Logger) *App {
 	cfgStore, cfg := store.Open(filepath.Join(dataDir, "settings.json"), core.DefaultSettings())
 	histStore, recs := store.Open(filepath.Join(dataDir, "history.json"), []core.WatchRecord(nil))
 	favStore, favs := store.Open(filepath.Join(dataDir, "favorites.json"), []core.FavoriteItem(nil))
+	srcStore, subs := store.Open(filepath.Join(dataDir, "sources.json"), []iptv.Subscription(nil))
 
 	reg := core.NewRegistry()
 	loc := local.New()
+	iptvMgr := iptv.NewManager(filepath.Join(cacheDir, "epg"), subs)
 	reg.Register(loc)
+	reg.Register(iptvMgr)
 
 	a := &App{
 		version:        version,
@@ -180,12 +197,14 @@ func NewApp(version, dataDir, cacheDir string, logger *logx.Logger) *App {
 		logger:         logger,
 		registry:       reg,
 		local:          loc,
+		iptvMgr:        iptvMgr,
 		settingsStore:  cfgStore,
 		settings:       cfg,
 		historyStore:   histStore,
 		history:        core.NewHistory(recs),
 		favoritesStore: favStore,
 		favorites:      core.NewFavorites(favs),
+		sourcesStore:   srcStore,
 		section:        "/home",
 		sideShown:      1,
 		posterGrids:    make(map[string]*list.PosterGridState),
@@ -203,11 +222,13 @@ func NewApp(version, dataDir, cacheDir string, logger *logx.Logger) *App {
 		},
 		vodProfile:    player.NewVODSingleProfile(),
 		seriesProfile: player.NewVODSeriesProfile(),
+		iptvProfile:   player.NewIPTVProfile(),
 	}
 	a.img = imageloader.New(filepath.Join(cacheDir, "covers"), a.update)
 	a.seriesProfile.OnOpenRelated = func(it core.Item) {
 		a.openDetail(it)
 	}
+	a.initIPTVCallbacks()
 	a.initPlayerCallbacks()
 	return a
 }
@@ -273,6 +294,9 @@ func (a *App) shutdown() {
 	}
 	if a.gateway != nil {
 		a.gateway.Stop()
+	}
+	if a.sourcesStore != nil {
+		a.sourcesStore.Close()
 	}
 	if a.favoritesStore != nil {
 		a.favoritesStore.Close()
@@ -368,6 +392,14 @@ func (a *App) view(c *ui.Context) {
 					OnToggleFav:  a.toggleFav,
 					IsFav:        a.favorites.Has,
 				})
+			case r.Match("/iptv"):
+				r.Title("IPTV 电视直播")
+				list.ChannelListPage(c, &a.iptvList, list.ChannelListActions{
+					OnAddSub:      func() { a.iptvModalOpen = true },
+					OnRefresh:     a.refreshIPTV,
+					OnSelectGroup: func(g string) { a.iptvList.ActiveGroup = g },
+					OnPlayChannel: a.playIPTVChannel,
+				})
 			case r.Match("/online/{id}"):
 				id := "online:" + r.Param("id")
 				pg := a.getPosterGrid(id)
@@ -419,7 +451,10 @@ func (a *App) view(c *ui.Context) {
 			case r.Match("/play"):
 				r.Title("播放")
 				var prof player.PlayerProfile = a.vodProfile
-				if a.isOnlinePlayback() {
+				switch {
+				case a.isIPTVPlayback():
+					prof = a.iptvProfile
+				case a.isOnlinePlayback():
 					prof = a.seriesProfile
 				}
 				player.Stage(c, &a.playerState, prof, a.surf, sideW)
@@ -436,6 +471,7 @@ func (a *App) view(c *ui.Context) {
 	})
 
 	a.openURLModal(c)
+	a.openIPTVModal(c)
 
 	c.OnShortcut(ui.Cmd, ui.KeyO, a.openFileDialog)
 	c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyO, a.openFolderDialog)
@@ -451,6 +487,7 @@ func (a *App) sidebar(c *ui.Context) {
 		ui.SidebarSection(c, "媒体", nil, func() {
 			ui.SidebarItem(c, "/home", theme.IconHome, "首页")
 			ui.SidebarItem(c, "/local", theme.IconFilm, "本地视频")
+			ui.SidebarItem(c, "/iptv", theme.IconTV, "IPTV 直播")
 			ui.SidebarItem(c, "/favorites", theme.IconStar, "收藏")
 		})
 		ui.SidebarSection(c, "在线平台", nil, func() {
@@ -673,6 +710,131 @@ func (a *App) openURLModal(c *ui.Context) {
 	})
 }
 
+func (a *App) openIPTVModal(c *ui.Context) {
+	if !a.iptvModalOpen {
+		return
+	}
+	t := c.Theme()
+	ui.Box(c.Key("iptv-backdrop")).Absolute().Fill().Background(ui.RGBA(0, 0, 0, 0.45)).Center().Children(func() {
+		ui.Column(c.Key("iptv-card")).Width(500).Padding(20).Radius(12).
+			Background(t.Surface).Border(1, theme.Hairline(t)).Gap(12).Children(func() {
+			ui.Text(c, "IPTV 订阅源管理").FontSize(15).FontWeight(600)
+
+			subs := a.iptvMgr.Subscriptions()
+			if len(subs) > 0 {
+				ui.Column(c).FillWidth().Gap(6).Children(func() {
+					for i, sub := range subs {
+						idx := i
+						label := sub.Name
+						if label == "" {
+							label = sub.URL
+						}
+						ui.Row(c.Key("iptv-sub-"+sub.ID)).FillWidth().Padding(6, 10).Radius(6).
+							Background(t.Text.Alpha(0.04)).AlignItems(ui.Center).Gap(8).Children(func() {
+							ui.Text(c, label).FontSize(12).MaxLines(1)
+							ui.Spacer(c)
+							if ui.Button(c.Key("iptv-sub-del-"+sub.ID), "删除").Clicked() {
+								next := make([]iptv.Subscription, 0, len(subs)-1)
+								for j, s := range subs {
+									if j != idx {
+										next = append(next, s)
+									}
+								}
+								a.iptvMgr.SetSubscriptions(next)
+								a.sourcesStore.Put(next)
+								a.refreshIPTV()
+							}
+						})
+					}
+				})
+			}
+
+			ui.TextInput(c.Key("iptv-sub-name"), &a.iptvSubName).
+				Placeholder("订阅名称（如 家庭直播）").FillWidth()
+			tf := ui.TextInput(c.Key("iptv-sub-url"), &a.iptvSubURL).
+				Placeholder("M3U / M3U8 订阅链接或本地文件路径").FillWidth()
+			ui.TextInput(c.Key("iptv-sub-epg"), &a.iptvSubEPG).
+				Placeholder("XMLTV EPG 链接（可选，支持 .xml / .xml.gz）").FillWidth()
+
+			ui.Row(c).FillWidth().Gap(8).Children(func() {
+				ui.Spacer(c)
+				if ui.Button(c.Key("iptv-cancel"), "关闭").Clicked() {
+					a.iptvModalOpen = false
+				}
+				if ui.PrimaryButton(c.Key("iptv-save"), "添加并刷新").Clicked() || tf.Submitted() {
+					rawURL := strings.TrimSpace(a.iptvSubURL)
+					if rawURL != "" {
+						name := strings.TrimSpace(a.iptvSubName)
+						if name == "" {
+							name = "IPTV 订阅"
+						}
+						sub := iptv.Subscription{
+							ID:      fmt.Sprintf("sub-%d", time.Now().UnixNano()),
+							Name:    name,
+							URL:     rawURL,
+							EPGURL:  strings.TrimSpace(a.iptvSubEPG),
+							Enabled: true,
+						}
+						next := append(a.iptvMgr.Subscriptions(), sub)
+						a.iptvMgr.SetSubscriptions(next)
+						a.sourcesStore.Put(next)
+						a.iptvSubName = ""
+						a.iptvSubURL = ""
+						a.iptvSubEPG = ""
+						a.iptvModalOpen = false
+						a.refreshIPTV()
+					}
+				}
+			})
+		})
+	})
+}
+
+func (a *App) refreshIPTV() {
+	if a.iptvMgr == nil {
+		return
+	}
+	a.iptvList.Loading = true
+	a.iptvList.Err = ""
+	safego.Go("iptv-refresh", a.logger.Printf, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		err := a.iptvMgr.Refresh(ctx)
+		items, chErr := a.iptvMgr.Channels(ctx)
+		_, groups, _ := a.iptvMgr.Snapshot()
+		a.update(func() {
+			a.iptvList.Loading = false
+			if err != nil {
+				a.iptvList.Err = err.Error()
+			} else if chErr != nil {
+				a.iptvList.Err = chErr.Error()
+			}
+			a.iptvList.Channels = items
+			a.iptvList.Groups = groups
+		})
+	})
+}
+
+func (a *App) playIPTVChannel(it core.Item) {
+	if a.iptvMgr != nil {
+		if q := a.iptvMgr.BuildQueue(it.Ref.ID); q != nil {
+			a.startQueue(q)
+			return
+		}
+	}
+	a.startQueue(core.NewQueue([]core.Item{it}, 0))
+}
+
+func (a *App) isIPTVPlayback() bool {
+	if a.playerState.Session == nil || a.playerState.Session.Queue == nil {
+		return false
+	}
+	if it, ok := a.playerState.Session.Queue.Active(); ok {
+		return it.Ref.Source == iptv.SourceID
+	}
+	return false
+}
+
 func (a *App) loadFolder(dir string) {
 	a.fileBrowser.Loading = true
 	a.fileBrowser.Err = ""
@@ -832,6 +994,8 @@ func (a *App) startQueue(q *core.Queue) {
 		switch {
 		case item.Ref.Source == local.SourceID:
 			src, err = a.local.Resolve(ctx, item.Ref, core.ResolveOpts{})
+		case item.Ref.Source == iptv.SourceID:
+			src, err = a.iptvMgr.Resolve(ctx, item.Ref, core.ResolveOpts{})
 		case strings.HasPrefix(item.Ref.Source, "online:"):
 			if a.gateway == nil {
 				err = fmt.Errorf("网关未就绪")
@@ -855,7 +1019,27 @@ func (a *App) startQueue(q *core.Queue) {
 				}
 				return
 			}
-			src.StartAt = a.history.ResumePosition(item.Ref)
+			if item.Ref.Source == iptv.SourceID {
+				if a.iptvCurChannel != "" && a.iptvCurChannel != item.Ref.ID {
+					a.iptvPrevChannel = a.iptvCurChannel
+				}
+				a.iptvCurChannel = item.Ref.ID
+				if a.iptvProfile != nil {
+					a.iptvProfile.LastChannel = a.iptvPrevChannel
+					a.iptvProfile.NowProgram = ""
+					a.iptvProfile.EPGList = nil
+					_, _, epg := a.iptvMgr.Snapshot()
+					if epg != nil {
+						nowProg, _ := epg.NowAndNext(item.Extra["tvg_id"], item.Title, time.Now())
+						if nowProg != nil {
+							a.iptvProfile.NowProgram = nowProg.Title
+						}
+						a.iptvProfile.EPGList = epg.ForChannel(item.Extra["tvg_id"], item.Title)
+					}
+				}
+			} else {
+				src.StartAt = a.history.ResumePosition(item.Ref)
+			}
 			if !a.playerState.Session.SetResolved(gen, src) {
 				return
 			}
@@ -923,7 +1107,13 @@ func (a *App) onMPVSnapshot(snap mpv.Snapshot) {
 		return
 	}
 	if snap.Error != "" {
-		if retry, _ := sess.HandleFailure(snap.Error); retry && sess.Source != nil {
+		if retry, lineIdx := sess.HandleFailure(snap.Error); retry && sess.Source != nil {
+			if lineIdx >= 0 && lineIdx < len(sess.Source.Lines) {
+				line := sess.Source.Lines[lineIdx]
+				sess.Source.URL = line.URL
+				sess.Source.Kind = line.Kind
+				sess.Source.Headers = line.Headers
+			}
 			_ = a.mpv.Load(sess.Source)
 		}
 		return
@@ -931,6 +1121,10 @@ func (a *App) onMPVSnapshot(snap mpv.Snapshot) {
 	if snap.Loaded {
 		sess.SetPlaying()
 		sess.SetBuffering(snap.Buffering)
+		if sess.Source != nil && sess.Source.Ref.Source == iptv.SourceID &&
+			sess.LineIndex >= 0 && sess.LineIndex < len(sess.Source.Lines) {
+			a.iptvMgr.RememberWorkingLine(sess.Source.Ref.ID, sess.Source.Lines[sess.LineIndex].ID)
+		}
 	}
 	if snap.EOF && sess.Phase == core.PhasePlaying {
 		sess.Phase = core.PhaseEnded
@@ -958,6 +1152,9 @@ func (a *App) leavePlayerCleanup() {
 func (a *App) savePlaybackProgress() {
 	sess := a.playerState.Session
 	if sess == nil || sess.Source == nil || !a.playerState.Snap.Loaded {
+		return
+	}
+	if sess.Source.Ref.Source == iptv.SourceID {
 		return
 	}
 	var seriesID string
@@ -1195,5 +1392,76 @@ func (a *App) initPlayerCallbacks() {
 		if st.Session != nil && st.Session.Queue != nil {
 			a.startQueue(st.Session.Queue)
 		}
+	}
+}
+
+func (a *App) initIPTVCallbacks() {
+	p := player.NewIPTVProfile()
+	a.iptvProfile = p
+	p.OnSelectLine = func(lineIdx int) {
+		sess := a.playerState.Session
+		if sess == nil || sess.Source == nil || lineIdx < 0 || lineIdx >= len(sess.Source.Lines) {
+			return
+		}
+		line := sess.Source.Lines[lineIdx]
+		sess.LineIndex = lineIdx
+		sess.Source.URL = line.URL
+		sess.Source.Kind = line.Kind
+		sess.Source.Headers = line.Headers
+		if a.mpv != nil {
+			_ = a.mpv.Load(sess.Source)
+		}
+		a.playerState.ShowOSD(time.Now(), "切换线路: "+line.Label)
+	}
+	p.OnRefreshStream = func() {
+		sess := a.playerState.Session
+		if sess == nil || sess.Source == nil || a.mpv == nil {
+			return
+		}
+		_ = a.mpv.Load(sess.Source)
+		a.playerState.ShowOSD(time.Now(), "重新加载直播流")
+	}
+	p.OnTuneIndex = func(idx int) {
+		sess := a.playerState.Session
+		if sess == nil || sess.Queue == nil {
+			return
+		}
+		if _, ok := sess.Queue.Jump(idx); ok {
+			a.startQueue(sess.Queue)
+		}
+	}
+	p.OnRecallPrev = func() {
+		if a.iptvPrevChannel == "" {
+			return
+		}
+		sess := a.playerState.Session
+		if sess != nil && sess.Queue != nil {
+			for i, it := range sess.Queue.Items {
+				if it.Ref.ID == a.iptvPrevChannel {
+					if _, ok := sess.Queue.Jump(i); ok {
+						a.startQueue(sess.Queue)
+					}
+					return
+				}
+			}
+		}
+	}
+	p.OnOpenEPG = func() {
+		sess := a.playerState.Session
+		if sess == nil || sess.Source == nil || a.iptvMgr == nil {
+			return
+		}
+		ref := sess.Source.Ref
+		safego.Go("iptv-epg", a.logger.Printf, func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			list, err := a.iptvMgr.EPG(ctx, ref, time.Now())
+			if err != nil {
+				return
+			}
+			a.update(func() {
+				p.EPGList = list
+			})
+		})
 	}
 }
