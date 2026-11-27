@@ -12,7 +12,12 @@ require (
 require (
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/cloudflare/circl v1.6.2 // indirect
+	github.com/dlclark/regexp2/v2 v2.11.0 // indirect
+	github.com/dop251/goja v0.0.0-20261125210501-5e92a7e24d0c // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
+	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	go.digitalxero.dev/rpm v0.3.4 // indirect

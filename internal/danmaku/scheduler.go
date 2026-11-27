@@ -79,7 +79,11 @@ func (s *Scheduler) Step(posSec float64, vpW, vpH float32, cfg Config, makeSprit
 		return
 	}
 	if !s.hasPos || math.Abs(posSec-s.lastPosSec) > 1.5 {
-		s.Seek(posSec)
+		if len(s.comments) > 0 {
+			s.Seek(posSec)
+		} else {
+			s.hasPos = true
+		}
 	}
 	s.lastPosSec = posSec
 
@@ -134,6 +138,38 @@ func (s *Scheduler) Step(posSec float64, vpW, vpH float32, cfg Config, makeSprit
 
 func (s *Scheduler) pickLane(now, vpW, speedPx, newW float32, maxLanes int) int {
 	return s.pickLane64(float64(now), vpW, speedPx, newW, maxLanes)
+}
+
+// PushLive injects a real-time chat danmaku item into the active lanes for live streams.
+func (s *Scheduler) PushLive(posSec float64, c core.Comment, vpW, vpH float32, cfg Config, makeSprite func(string, uint32, Config) *Sprite) {
+	if !cfg.Enabled || vpW <= 20 || vpH <= 20 || c.Text == "" || len(s.Active) >= 180 {
+		return
+	}
+	if len(CleanAndFilter([]core.Comment{c}, cfg.Keywords, 1)) == 0 {
+		return
+	}
+	speedPx := float32(155) * max(0.5, float32(cfg.Speed)) * max(0.8, vpW/1280)
+	lineH := float32(cfg.FontSize) + 10
+	maxLanes := max(1, min(len(s.lanes), int((vpH*float32(cfg.Area)-16)/lineH)))
+	estW := estimateWidth(c.Text, float32(cfg.FontSize))
+	lane := s.pickLane64(posSec, vpW, speedPx, estW, maxLanes)
+	if lane < 0 {
+		return
+	}
+	s.lanes[lane] = laneState{lastStart: posSec, lastWidth: estW}
+	var sp *Sprite
+	if makeSprite != nil {
+		sp = makeSprite(c.Text, c.Color, cfg)
+	}
+	s.Active = append(s.Active, FlyingItem{
+		Text:      c.Text,
+		Color:     c.Color,
+		Lane:      lane,
+		StartTime: posSec,
+		Width:     estW,
+		Height:    lineH,
+		Sprite:    sp,
+	})
 }
 
 func (s *Scheduler) pickLane64(now float64, vpW, speedPx, newW float32, maxLanes int) int {

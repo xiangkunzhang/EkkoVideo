@@ -88,6 +88,21 @@ func TestShellNavigationAndOnlineFlowHeadless(t *testing.T) {
 		t.Fatalf("iptv path=%q texts=%v", a.router.Path(), tt.Texts())
 	}
 
+	a.liveGrid.Rooms = []core.Item{{
+		Ref:      core.ItemRef{Source: "live:bilibili", Kind: core.KindLiveRoom, ID: "22637261"},
+		Title:    "测试直播间",
+		Subtitle: "测试主播",
+		Playable: true,
+		Extra:    map[string]string{"area": "网游", "online": "1.2万"},
+	}}
+	if err := tt.Click("直播间"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(1e9)
+	if a.router.Path() != "/live" || !tt.HasText("测试直播间") {
+		t.Fatalf("live path=%q texts=%v", a.router.Path(), tt.Texts())
+	}
+
 	if err := tt.Click("设置与诊断"); err != nil {
 		t.Fatal(err)
 	}

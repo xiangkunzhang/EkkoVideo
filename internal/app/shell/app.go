@@ -30,6 +30,7 @@ import (
 	"github.com/xiangkunzhang/Velan/internal/infra/safego"
 	"github.com/xiangkunzhang/Velan/internal/infra/store"
 	"github.com/xiangkunzhang/Velan/internal/provider/iptv"
+	"github.com/xiangkunzhang/Velan/internal/provider/live"
 	"github.com/xiangkunzhang/Velan/internal/provider/local"
 )
 
@@ -43,6 +44,7 @@ type App struct {
 	registry *core.Registry
 	local    *local.Provider
 	iptvMgr  *iptv.Manager
+	liveMgr  *live.Manager
 	gateway  *gwclient.Supervisor
 	gwStatus gwclient.Status
 
@@ -60,6 +62,7 @@ type App struct {
 	homeList    ui.ListState
 	fileBrowser list.FileBrowserState
 	iptvList    list.ChannelListState
+	liveGrid    list.LiveGridState
 
 	// Online platforms & poster grids
 	onlinePlatforms []core.ProviderInfo
@@ -84,6 +87,8 @@ type App struct {
 	vodProfile      *player.VODSingleProfile
 	seriesProfile   *player.VODSeriesProfile
 	iptvProfile     *player.IPTVProfile
+	liveProfile     *player.LiveRoomProfile
+	liveChatCancel  context.CancelFunc
 	iptvPrevChannel string
 	iptvCurChannel  string
 	onPlayer        bool
@@ -188,6 +193,7 @@ func NewApp(version, dataDir, cacheDir string, logger *logx.Logger) *App {
 	reg := core.NewRegistry()
 	loc := local.New()
 	iptvMgr := iptv.NewManager(filepath.Join(cacheDir, "epg"), subs)
+	liveMgr := live.NewManager()
 	reg.Register(loc)
 	reg.Register(iptvMgr)
 
@@ -199,6 +205,7 @@ func NewApp(version, dataDir, cacheDir string, logger *logx.Logger) *App {
 		registry:       reg,
 		local:          loc,
 		iptvMgr:        iptvMgr,
+		liveMgr:        liveMgr,
 		settingsStore:  cfgStore,
 		settings:       cfg,
 		historyStore:   histStore,
@@ -224,6 +231,12 @@ func NewApp(version, dataDir, cacheDir string, logger *logx.Logger) *App {
 		vodProfile:    player.NewVODSingleProfile(),
 		seriesProfile: player.NewVODSeriesProfile(),
 		iptvProfile:   player.NewIPTVProfile(),
+		liveProfile:   player.NewLiveRoomProfile(),
+		liveGrid: list.LiveGridState{
+			Platforms:  liveMgr.Platforms(),
+			PlatformID: "bilibili",
+			Category:   "0",
+		},
 	}
 	a.img = imageloader.New(filepath.Join(cacheDir, "covers"), a.update)
 	a.seriesProfile.Images = a.img
@@ -238,6 +251,7 @@ func NewApp(version, dataDir, cacheDir string, logger *logx.Logger) *App {
 		}
 	}
 	a.initIPTVCallbacks()
+	a.initLiveCallbacks()
 	a.initPlayerCallbacks()
 	mediakeys.Init(mediakeys.Handlers{
 		OnPlay: func() {
@@ -460,6 +474,37 @@ func (a *App) view(c *ui.Context) {
 					OnToggleFav:   a.toggleFav,
 					IsFav:         a.favorites.Has,
 				})
+			case r.Match("/live"):
+				r.Title("直播间")
+				if len(a.liveGrid.Rooms) == 0 && !a.liveGrid.Loading && a.liveGrid.Err == "" && a.liveGrid.PlatformID != "__fav__" {
+					a.loadLiveRooms(false)
+				}
+				list.LiveGridPage(c, &a.liveGrid, a.img, list.LiveGridActions{
+					OnSelectPlatform: func(id string) {
+						a.liveGrid.PlatformID = id
+						a.liveGrid.Category = ""
+						for _, p := range a.liveGrid.Platforms {
+							if p.ID == id && len(p.Categories) > 0 {
+								a.liveGrid.Category = p.Categories[0].ID
+								break
+							}
+						}
+						a.loadLiveRooms(false)
+					},
+					OnSelectCategory: func(cat string) {
+						a.liveGrid.Category = cat
+						a.loadLiveRooms(false)
+					},
+					OnSearch: func(q string) {
+						a.liveGrid.SearchQuery = q
+						a.searchLiveRooms(q)
+					},
+					OnRefresh:   func() { a.loadLiveRooms(false) },
+					OnLoadMore:  func() { a.loadLiveRooms(true) },
+					OnOpenRoom:  a.playLiveRoom,
+					OnToggleFav: a.toggleFav,
+					IsFav:       a.favorites.Has,
+				})
 			case r.Match("/online/{id}"):
 				id := "online:" + r.Param("id")
 				pg := a.getPosterGrid(id)
@@ -512,6 +557,8 @@ func (a *App) view(c *ui.Context) {
 				r.Title("播放")
 				var prof player.PlayerProfile = a.vodProfile
 				switch {
+				case a.isLivePlayback():
+					prof = a.liveProfile
 				case a.isIPTVPlayback():
 					prof = a.iptvProfile
 				case a.isOnlinePlayback():
@@ -556,6 +603,7 @@ func (a *App) sidebar(c *ui.Context) {
 			ui.SidebarItem(c, "/home", theme.IconHome, "首页")
 			ui.SidebarItem(c, "/local", theme.IconFilm, "本地视频")
 			ui.SidebarItem(c, "/iptv", theme.IconTV, "IPTV 直播")
+			ui.SidebarItem(c, "/live", theme.IconBroadcast, "直播间")
 			ui.SidebarItem(c, "/favorites", theme.IconStar, "收藏")
 		})
 		ui.SidebarSection(c, "在线平台", nil, func() {
@@ -1070,6 +1118,10 @@ func (a *App) ensurePlayerReady() error {
 }
 
 func (a *App) resetPlayerContext(clearSeriesRelated bool, resetIPTV bool) {
+	if a.liveChatCancel != nil {
+		a.liveChatCancel()
+		a.liveChatCancel = nil
+	}
 	if a.mpv != nil {
 		a.mpv.Command("stop")
 		if resetIPTV {
@@ -1102,6 +1154,11 @@ func (a *App) resetPlayerContext(clearSeriesRelated bool, resetIPTV bool) {
 		a.iptvProfile.NowProgram = ""
 		a.iptvProfile.EPGList = nil
 		a.iptvProfile.DrawerMode = "channels"
+	}
+	if resetIPTV && a.liveProfile != nil {
+		a.liveProfile.ChatList = nil
+		a.liveProfile.Streamer = ""
+		a.liveProfile.OnlineCount = ""
 	}
 }
 
@@ -1171,6 +1228,8 @@ func (a *App) startQueue(q *core.Queue) {
 			src, err = a.local.Resolve(ctx, item.Ref, core.ResolveOpts{})
 		case item.Ref.Source == iptv.SourceID:
 			src, err = a.iptvMgr.Resolve(ctx, item.Ref, core.ResolveOpts{})
+		case strings.HasPrefix(item.Ref.Source, live.SourcePrefix):
+			src, err = a.liveMgr.ResolveRoom(ctx, item.Ref)
 		case strings.HasPrefix(item.Ref.Source, "online:"):
 			if a.gateway == nil {
 				err = fmt.Errorf("网关未就绪")
@@ -1194,7 +1253,13 @@ func (a *App) startQueue(q *core.Queue) {
 				}
 				return
 			}
-			if item.Ref.Source == iptv.SourceID {
+			if strings.HasPrefix(item.Ref.Source, live.SourcePrefix) {
+				if a.liveProfile != nil {
+					a.liveProfile.Streamer = item.Extra["streamer"]
+					a.liveProfile.OnlineCount = item.Extra["online"]
+					a.liveProfile.ChatList = nil
+				}
+			} else if item.Ref.Source == iptv.SourceID {
 				if a.iptvCurChannel != "" && a.iptvCurChannel != item.Ref.ID {
 					a.iptvPrevChannel = a.iptvCurChannel
 				}
@@ -1230,7 +1295,11 @@ func (a *App) startQueue(q *core.Queue) {
 				a.playerState.Session.Phase = core.PhaseFailed
 				return
 			}
-			a.loadDanmakuForSource(gen, src)
+			if strings.HasPrefix(item.Ref.Source, live.SourcePrefix) {
+				a.startLiveDanmaku(gen, item.Ref)
+			} else {
+				a.loadDanmakuForSource(gen, src)
+			}
 		})
 	})
 }
@@ -1430,7 +1499,7 @@ func (a *App) savePlaybackProgress() {
 	if sess == nil || sess.Source == nil || !a.playerState.Snap.Loaded {
 		return
 	}
-	if sess.Source.Ref.Source == iptv.SourceID {
+	if sess.Source.Ref.Source == iptv.SourceID || strings.HasPrefix(sess.Source.Ref.Source, live.SourcePrefix) {
 		return
 	}
 	var seriesID, poster string
@@ -1746,4 +1815,208 @@ func (a *App) initIPTVCallbacks() {
 			})
 		})
 	}
+}
+
+func (a *App) isLivePlayback() bool {
+	if a.playerState.Session == nil || a.playerState.Session.Queue == nil {
+		return false
+	}
+	if it, ok := a.playerState.Session.Queue.Active(); ok {
+		return it.Ref.Kind == core.KindLiveRoom || strings.HasPrefix(it.Ref.Source, live.SourcePrefix)
+	}
+	return false
+}
+
+func (a *App) initLiveCallbacks() {
+	p := a.liveProfile
+	if p == nil {
+		return
+	}
+	p.Images = a.img
+	p.OnSelectLine = func(lineIdx int) {
+		sess := a.playerState.Session
+		if sess == nil || sess.Source == nil || lineIdx < 0 || lineIdx >= len(sess.Source.Lines) {
+			return
+		}
+		line := sess.Source.Lines[lineIdx]
+		sess.LineIndex = lineIdx
+		sess.Source.URL = line.URL
+		sess.Source.Kind = line.Kind
+		sess.Source.Headers = line.Headers
+		if a.mpv != nil {
+			_ = a.mpv.Load(sess.Source)
+		}
+		a.playerState.ShowOSD(time.Now(), "切换线路: "+line.Label)
+	}
+	p.OnRefreshStream = func() {
+		sess := a.playerState.Session
+		if sess == nil || sess.Source == nil || a.mpv == nil {
+			return
+		}
+		_ = a.mpv.Load(sess.Source)
+		a.playerState.ShowOSD(time.Now(), "重连直播流")
+	}
+	p.OnClearChat = func() {
+		p.ChatList = nil
+		if a.playerState.DanmakuSched != nil {
+			a.playerState.DanmakuSched.Clear()
+		}
+	}
+}
+
+func (a *App) loadLiveRooms(appendMore bool) {
+	if a.liveGrid.PlatformID == "__fav__" {
+		var rooms []core.Item
+		for _, f := range a.favorites.Items {
+			if f.Item.Ref.Kind == core.KindLiveRoom || strings.HasPrefix(f.Item.Ref.Source, live.SourcePrefix) {
+				rooms = append(rooms, f.Item)
+			}
+		}
+		a.liveGrid.Rooms = rooms
+		a.liveGrid.HasMore = false
+		a.liveGrid.Loading = false
+		a.liveGrid.Err = ""
+		return
+	}
+	if a.liveGrid.Loading || a.liveMgr == nil {
+		return
+	}
+	if !appendMore {
+		a.liveGrid.Page = 1
+		a.liveGrid.Rooms = nil
+		a.liveGrid.HasMore = true
+	} else if !a.liveGrid.HasMore {
+		return
+	}
+	plat := a.liveGrid.PlatformID
+	cat := a.liveGrid.Category
+	page := a.liveGrid.Page
+	a.liveGrid.Loading = true
+	a.liveGrid.Err = ""
+	safego.Go("live-rooms", a.logger.Printf, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		items, hasMore, err := a.liveMgr.Rooms(ctx, plat, cat, page)
+		a.update(func() {
+			if a.liveGrid.PlatformID != plat || a.liveGrid.Category != cat {
+				return
+			}
+			a.liveGrid.Loading = false
+			if err != nil {
+				a.liveGrid.Err = err.Error()
+				return
+			}
+			if appendMore {
+				seen := make(map[string]bool, len(a.liveGrid.Rooms))
+				for _, r := range a.liveGrid.Rooms {
+					seen[r.Ref.Source+":"+r.Ref.ID] = true
+				}
+				for _, it := range items {
+					k := it.Ref.Source + ":" + it.Ref.ID
+					if !seen[k] {
+						seen[k] = true
+						a.liveGrid.Rooms = append(a.liveGrid.Rooms, it)
+					}
+				}
+			} else {
+				a.liveGrid.Rooms = items
+			}
+			a.liveGrid.Page = page + 1
+			a.liveGrid.HasMore = hasMore
+		})
+	})
+}
+
+func (a *App) searchLiveRooms(q string) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		a.loadLiveRooms(false)
+		return
+	}
+	plat := a.liveGrid.PlatformID
+	if plat == "__fav__" {
+		plat = "bilibili"
+		a.liveGrid.PlatformID = plat
+	}
+	a.liveGrid.Loading = true
+	a.liveGrid.Err = ""
+	a.liveGrid.Rooms = nil
+	a.liveGrid.HasMore = false
+	safego.Go("live-search", a.logger.Printf, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		items, err := a.liveMgr.Search(ctx, plat, q)
+		a.update(func() {
+			a.liveGrid.Loading = false
+			if err != nil {
+				a.liveGrid.Err = err.Error()
+				return
+			}
+			a.liveGrid.Rooms = items
+		})
+	})
+}
+
+func (a *App) playLiveRoom(it core.Item) {
+	if len(a.liveGrid.Rooms) > 0 {
+		for i, r := range a.liveGrid.Rooms {
+			if r.Ref == it.Ref {
+				a.startQueue(core.NewQueue(a.liveGrid.Rooms, i))
+				return
+			}
+		}
+	}
+	a.startQueue(core.NewQueue([]core.Item{it}, 0))
+}
+
+func (a *App) startLiveDanmaku(gen uint64, ref core.ItemRef) {
+	if a.liveChatCancel != nil {
+		a.liveChatCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.liveChatCancel = cancel
+
+	ch := make(chan live.ChatMessage, 64)
+	safego.Go("live-dm-stream", a.logger.Printf, func() {
+		defer close(ch)
+		_ = a.liveMgr.StreamDanmaku(ctx, ref, ch)
+	})
+	safego.Go("live-dm-pump", a.logger.Printf, func() {
+		for msg := range ch {
+			m := msg
+			a.update(func() {
+				if a.playerState.Session == nil || a.playerState.Session.Generation != gen || !a.onPlayer {
+					return
+				}
+				if a.liveProfile != nil {
+					a.liveProfile.ChatList = append(a.liveProfile.ChatList, m)
+					if len(a.liveProfile.ChatList) > 200 {
+						a.liveProfile.ChatList = a.liveProfile.ChatList[len(a.liveProfile.ChatList)-200:]
+					}
+				}
+				if a.playerState.DanmakuSched != nil && a.playerState.DanmakuRend != nil && a.playerState.DanmakuCfg.Enabled {
+					posSec := a.playerState.Snap.Position
+					if !a.playerState.Snap.Paused && !a.playerState.SnapAt.IsZero() && a.playerState.Snap.Loaded {
+						spd := a.playerState.Snap.Speed
+						if spd <= 0 {
+							spd = 1
+						}
+						posSec += time.Since(a.playerState.SnapAt).Seconds() * spd
+					}
+					w := float32(1280)
+					h := float32(720)
+					if a.win != nil {
+						ww, hh := a.win.Size()
+						if ww > 0 && hh > 0 {
+							w, h = float32(ww), float32(hh)
+						}
+					}
+					a.playerState.DanmakuSched.PushLive(posSec, core.Comment{
+						Text:  m.Text,
+						Color: m.Color,
+					}, w, h, a.playerState.DanmakuCfg, a.playerState.DanmakuRend.MakeSprite)
+				}
+			})
+		}
+	})
 }
