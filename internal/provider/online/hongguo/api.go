@@ -103,6 +103,12 @@ func (c *Client) Detail(seriesID string) (*Detail, error) {
 		return nil, fmt.Errorf("hongguo: empty series id")
 	}
 
+	// Hongguo web SSR now truncates vid_list to 5 obfuscated v1_... tokens.
+	// Prefer the signed App video_detail/v1/ endpoint which returns all numeric vids.
+	if appDetail, appErr := c.fetchAppDetail(seriesID); appErr == nil && appDetail != nil && len(appDetail.VidList) > 0 {
+		return appDetail, nil
+	}
+
 	detail, err := c.detailFrom(c.BaseURL + "/player/" + seriesID)
 	if err == nil {
 		return detail, nil

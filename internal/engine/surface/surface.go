@@ -3,7 +3,7 @@ package surface
 
 import (
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/engine/mpv"
+	"github.com/xiangkunzhang/Velan/internal/engine/mpv"
 )
 
 type OverlayMode int

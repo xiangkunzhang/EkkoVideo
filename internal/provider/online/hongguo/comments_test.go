@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/upstream"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/upstream"
 )
 
 // samplePlayerHTML mirrors the shape of the public h5 player page: the router

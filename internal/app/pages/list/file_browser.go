@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/core"
 )
 
 // FileBrowserState holds UI state for the local/folder file browser page.

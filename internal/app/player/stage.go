@@ -2,35 +2,38 @@
 package player
 
 import (
+	"math"
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
-	"github.com/xiangkunzhang/EkkoVideo/internal/danmaku"
-	"github.com/xiangkunzhang/EkkoVideo/internal/engine/mpv"
-	"github.com/xiangkunzhang/EkkoVideo/internal/engine/surface"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/danmaku"
+	"github.com/xiangkunzhang/Velan/internal/engine/mpv"
+	"github.com/xiangkunzhang/Velan/internal/engine/surface"
 )
 
 const controlsHideDelay = 2500 * time.Millisecond
 
 // PlayerViewState holds main-thread UI state and callbacks shared between PlayerStage and Profiles.
 type PlayerViewState struct {
-	Session       *core.PlaybackSession
-	Snap          mpv.Snapshot
-	Seeking       bool
-	SeekTarget    float64
-	AspectRatio   string // auto | 16:9 | 4:3 | fill
-	AlwaysOnTop   bool
-	Fullscreen    bool
-	DrawerOpen    bool
-	ActiveMenu    string // "" | "audio" | "sub" | "aspect"
-	DrawerList    ui.ListState
-	LastActivity  time.Time
-	OSDMessage    string
-	OSDUntil      time.Time
-	PointerInside bool
-	LastPointerX  float32
-	LastPointerY  float32
+	Session        *core.PlaybackSession
+	Snap           mpv.Snapshot
+	Seeking        bool
+	SeekTarget     float64
+	AspectRatio    string // auto | 16:9 | 4:3 | fill
+	AlwaysOnTop    bool
+	Fullscreen     bool
+	DrawerOpen     bool
+	ActiveMenu     string // "" | "audio" | "sub" | "aspect"
+	DrawerList     ui.ListState
+	LastActivity   time.Time
+	OSDMessage     string
+	OSDUntil       time.Time
+	PointerInside  bool
+	LastPointerX   float32
+	LastPointerY   float32
+	BufferingSince time.Time
 
 	DanmakuSched *danmaku.Scheduler
 	DanmakuRend  *danmaku.Renderer
@@ -118,7 +121,9 @@ func Stage(c *ui.Context, st *PlayerViewState, prof PlayerProfile, surf surface.
 		canvas := ui.Box(c.Key("player-canvas")).Grow(1).FillHeight().Background(ui.Transparent)
 		if px, py, ok := canvas.PointerPosition(); ok {
 			st.PointerInside = true
-			if px != st.LastPointerX || py != st.LastPointerY {
+			inHotzone := py <= 58 || py >= winH-98
+			moved := math.Abs(float64(px-st.LastPointerX)) >= 2 || math.Abs(float64(py-st.LastPointerY)) >= 2
+			if moved || inHotzone {
 				st.LastPointerX, st.LastPointerY = px, py
 				st.Touch(now)
 			}
@@ -157,7 +162,7 @@ func Stage(c *ui.Context, st *PlayerViewState, prof PlayerProfile, surf surface.
 				if len(st.DanmakuSched.Active) > 0 && !st.Snap.Paused {
 					c.Invalidate()
 				}
-				ui.Box(c.Key("danmaku-layer")).Fill().PassThrough().Draw(func(p *ui.Painter, r ui.Rect) {
+				ui.Box(c.Key("danmaku-layer")).Absolute().Fill().PassThrough().Draw(func(p *ui.Painter, r ui.Rect) {
 					vr := danmaku.VideoContentRect(r, st.Snap.VideoWidth, st.Snap.VideoHeight, st.AspectRatio)
 					danmaku.Draw(p, vr, st.DanmakuSched, posSec, st.DanmakuCfg)
 				})
@@ -167,17 +172,21 @@ func Stage(c *ui.Context, st *PlayerViewState, prof PlayerProfile, surf surface.
 			if st.Session != nil {
 				switch st.Session.Phase {
 				case core.PhaseResolving, core.PhaseLoading:
-					ui.Column(c).Fill().Center().Gap(10).Children(func() {
-						ui.Spinner(c).FontSize(26).Label("正在加载")
-						ui.Text(c, "正在准备播放…").FontSize(13).TextColor(ui.RGBA(255, 255, 255, 0.85))
+					ui.Column(c).Absolute().Fill().Center().Background(ui.Hex("#0B101B")).Children(func() {
+						theme.BrandLoader(c, 84, "正在准备播放…", ui.RGBA(255, 255, 255, 0.85), true)
 					})
 				case core.PhaseBuffering:
-					ui.Column(c).Fill().Center().Gap(8).PassThrough().Children(func() {
-						ui.Spinner(c).FontSize(24).Label("缓冲中")
-						ui.Text(c, "正在缓冲…").FontSize(12).TextColor(ui.RGBA(255, 255, 255, 0.8))
-					})
+					if !st.BufferingSince.IsZero() && now.Sub(st.BufferingSince) < 250*time.Millisecond {
+						c.After(250*time.Millisecond - now.Sub(st.BufferingSince))
+					} else {
+						ui.Column(c).Absolute().Fill().Center().PassThrough().Children(func() {
+							ui.Box(c).Padding(14, 22).Radius(14).Background(ui.RGBA(10, 14, 22, 0.62)).Children(func() {
+								theme.BrandLoader(c, 58, "正在缓冲…", ui.RGBA(255, 255, 255, 0.88), true)
+							})
+						})
+					}
 				case core.PhaseFailed:
-					ui.Column(c).Fill().Center().Gap(10).Background(ui.RGBA(0, 0, 0, 0.72)).Children(func() {
+					ui.Column(c).Absolute().Fill().Center().Gap(10).Background(ui.RGBA(0, 0, 0, 0.72)).Children(func() {
 						ui.Text(c, "播放失败").FontSize(16).Bold().TextColor(ui.RGB(255, 255, 255))
 						if st.Session.LastError != "" {
 							ui.Text(c, st.Session.LastError).FontSize(12.5).TextColor(ui.RGBA(255, 255, 255, 0.7)).MaxWidth(420).TextAlign(ui.Center)

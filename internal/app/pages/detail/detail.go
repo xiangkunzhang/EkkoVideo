@@ -6,9 +6,9 @@ import (
 	"fmt"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/imageloader"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/infra/imageloader"
 )
 
 type State struct {
@@ -48,18 +48,23 @@ func Page(c *ui.Context, st *State, img *imageloader.Loader, isFav bool, resumeE
 			if b.Clicked() && act.OnBack != nil {
 				act.OnBack()
 			}
-			ui.Text(c, st.Item.Title).FontSize(15).FontWeight(600).TextColor(white).SingleLine().Grow(1).MinWidth(0)
+			topTitle := st.Item.Title
+			if st.Detail != nil && st.Detail.Item.Title != "" {
+				topTitle = st.Detail.Item.Title
+			}
+			ui.Text(c, topTitle).FontSize(15).FontWeight(600).TextColor(white).SingleLine().Grow(1).MinWidth(0)
 		})
 
 		topPad := float32(theme.TitleBarHeight + 18)
+		winW, _ := c.Size()
 		ui.Scroll(c.Key("detail-scroll")).Fill().Padding(topPad, 28, 36, 28).Children(func() {
-			ui.Column(c).FillWidth().MaxWidth(980).Gap(24).Children(func() {
+			ui.Column(c).FillWidth().Gap(24).Children(func() {
 				// Hero header: poster + metadata + primary actions
 				ui.Row(c).FillWidth().Gap(22).AlignItems(ui.Start).Children(func() {
 					ui.Box(c).Width(170).Height(238).Shrink(0).Radius(12).Clip().
 						Background(ui.RGBA(255, 255, 255, 0.08)).Children(func() {
 						cover := st.Item.Poster
-						if st.Detail != nil && st.Detail.Item.Poster != "" {
+						if cover == "" && st.Detail != nil {
 							cover = st.Detail.Item.Poster
 						}
 						if bmp, alpha := img.Get(c, cover); bmp != nil {
@@ -143,9 +148,8 @@ func Page(c *ui.Context, st *State, img *imageloader.Loader, isFav bool, resumeE
 				})
 
 				if st.Loading {
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Spinner(c).FontSize(18).Label("加载详情")
-						ui.Text(c, "正在加载剧集列表…").FontSize(13).TextColor(muted)
+					ui.Row(c).FillWidth().Center().Padding(16, 0).Children(func() {
+						theme.BrandLoader(c, 52, "正在加载剧集列表…", muted, true)
 					})
 				} else if st.Err != "" {
 					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
@@ -191,8 +195,8 @@ func Page(c *ui.Context, st *State, img *imageloader.Loader, isFav bool, resumeE
 						end := min(start+100, len(eps))
 						slice := eps[start:end]
 
-						// Render 10 per row
-						const perRow = 10
+						// Responsive columns based on window width
+						perRow := max(5, int((winW-56+8)/(68+8)))
 						for rowStart := 0; rowStart < len(slice); rowStart += perRow {
 							rowEnd := min(rowStart+perRow, len(slice))
 							ui.Row(c).FillWidth().Gap(8).Children(func() {
@@ -231,8 +235,9 @@ func Page(c *ui.Context, st *State, img *imageloader.Loader, isFav bool, resumeE
 					ui.Column(c).FillWidth().Gap(10).Children(func() {
 						ui.Text(c, "相关推荐 / 同系列").FontSize(16).FontWeight(600).TextColor(white)
 						ui.Row(c).FillWidth().Gap(12).Children(func() {
+							maxRel := max(6, int((winW-56+12)/(136+12)))
 							for i, rel := range st.Related {
-								if i >= 6 {
+								if i >= maxRel {
 									break
 								}
 								rb := ui.ButtonBase(c.Key("rel-" + rel.Ref.ID)).Width(136).Cursor(ui.CursorPointer)

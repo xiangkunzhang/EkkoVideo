@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/provider/online"
 )
 
 func (s *Supervisor) getJSON(ctx context.Context, path string, out any) error {

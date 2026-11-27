@@ -1,4 +1,4 @@
-# EkkoVideo 分阶段里程碑路线图
+# Velan 分阶段里程碑路线图
 
 > 策略：**接口提前定清，实现先做重点；macOS 优先打磨至稳定可用，再扩展 Windows 与 Linux。**
 

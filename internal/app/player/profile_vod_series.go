@@ -4,8 +4,9 @@ import (
 	"fmt"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/infra/imageloader"
 )
 
 // VODSeriesProfile extends VODSingleProfile for multi-episode online/library series
@@ -14,7 +15,9 @@ type VODSeriesProfile struct {
 	VODSingleProfile
 	DrawerTab     int // 0 = episodes, 1 = related recommendations
 	Related       []core.Item
+	Images        *imageloader.Loader
 	OnOpenRelated func(core.Item)
+	OnRandomNext  func()
 }
 
 func NewVODSeriesProfile() *VODSeriesProfile { return &VODSeriesProfile{} }
@@ -33,6 +36,9 @@ func (p *VODSeriesProfile) SideOrOverlay(c *ui.Context, st *PlayerViewState) {
 			if pillBtn(c, "tab-rel", "剧集推荐", p.DrawerTab == 1).Clicked() {
 				p.DrawerTab = 1
 			}
+			if p.OnRandomNext != nil && pillBtn(c, "rel-random-next", "随机下一部", false).Clicked() {
+				p.OnRandomNext()
+			}
 			ui.Spacer(c)
 			if pillBtn(c, "close-series-drawer", "收起", false).Clicked() {
 				st.DrawerOpen = false
@@ -46,22 +52,38 @@ func (p *VODSeriesProfile) SideOrOverlay(c *ui.Context, st *PlayerViewState) {
 				})
 				return
 			}
-			for i, rel := range p.Related {
-				row := ui.ButtonBase(c.Key(fmt.Sprintf("rel-d-%d-%s", i, rel.Ref.ID))).
-					FillWidth().Height(48).Padding(0, 10).Radius(8).Cursor(ui.CursorPointer)
-				if row.Hovered() {
-					row.Background(ui.RGBA(255, 255, 255, 0.08))
-				}
-				row.Children(func() {
-					ui.Column(c).Fill().Padding(6, 0).Gap(2).Children(func() {
-						ui.Text(c, rel.Title).FontSize(13).TextColor(white).SingleLine()
-						ui.Text(c, rel.Subtitle).FontSize(11).TextColor(ui.RGBA(255, 255, 255, 0.55)).SingleLine()
-					})
+			ui.Scroll(c.Key("series-rel-scroll")).Grow(1).FillWidth().Children(func() {
+				ui.Column(c).FillWidth().Gap(6).Children(func() {
+					for i, rel := range p.Related {
+						row := ui.ButtonBase(c.Key(fmt.Sprintf("rel-d-%d-%s", i, rel.Ref.ID))).
+							FillWidth().Height(66).Padding(6, 8).Radius(8).Cursor(ui.CursorPointer)
+						if row.Hovered() {
+							row.Background(ui.RGBA(255, 255, 255, 0.08))
+						}
+						row.Children(func() {
+							ui.Row(c).Fill().AlignItems(ui.Center).Gap(10).Children(func() {
+								ui.Box(c).Width(40).Height(54).Shrink(0).Radius(6).Clip().
+									Background(ui.RGBA(255, 255, 255, 0.08)).Children(func() {
+									if p.Images != nil && rel.Poster != "" {
+										if bmp, alpha := p.Images.Get(c, rel.Poster); bmp != nil {
+											ui.Image(c, bmp).Fill().Fit(ui.Cover).Opacity(alpha)
+										}
+									}
+								})
+								ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+									ui.Text(c, rel.Title).FontSize(13).FontWeight(500).TextColor(white).SingleLine()
+									if rel.Subtitle != "" {
+										ui.Text(c, rel.Subtitle).FontSize(11).TextColor(ui.RGBA(255, 255, 255, 0.55)).SingleLine()
+									}
+								})
+							})
+						})
+						if row.Clicked() && p.OnOpenRelated != nil {
+							p.OnOpenRelated(rel)
+						}
+					}
 				})
-				if row.Clicked() && p.OnOpenRelated != nil {
-					p.OnOpenRelated(rel)
-				}
-			}
+			})
 			return
 		}
 

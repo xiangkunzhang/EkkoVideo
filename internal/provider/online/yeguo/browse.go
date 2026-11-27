@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/legacymodel"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/legacymodel"
 )
 
 func (c *Client) Browse(mode, keyword string, page, limit int) ([]Drama, int, error) {

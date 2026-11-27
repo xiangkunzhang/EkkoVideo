@@ -3,24 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "==> Building EkkoVideo.app via mygo..."
-go tool mygo build -skip-dmg .
-
-ARCH="$(uname -m)"
-if [[ "$ARCH" == "x86_64" ]]; then
-  PLAT="darwin-amd64"
-else
-  PLAT="darwin-arm64"
-fi
-
-APP="build/${PLAT}/EkkoVideo.app"
-BIN="${APP}/Contents/MacOS/EkkoVideo"
-PLAYER_DIR="${APP}/Contents/Resources/player"
-
-if [[ ! -x "$BIN" ]]; then
-  echo "error: built binary not found at $BIN" >&2
-  exit 1
-fi
+TARGETS="${1:-darwin/amd64,darwin/arm64}"
+echo "==> Building Velan.app ($TARGETS) via mygo..."
+go tool mygo build -platform "$TARGETS" -skip-dmg .
 
 # Locate source libmpv.2.dylib (or libmpv.dylib)
 SRC_MPV=""
@@ -34,10 +19,22 @@ for cand in \
   fi
 done
 
-if [[ -n "$SRC_MPV" ]]; then
-  echo "==> Bundling libmpv from $SRC_MPV..."
-  mkdir -p "$PLAYER_DIR"
-  python3 - "$SRC_MPV" "$PLAYER_DIR" <<'PY'
+IFS=',' read -ra TARGET_LIST <<< "$TARGETS"
+for TARGET in "${TARGET_LIST[@]}"; do
+  PLAT="${TARGET//\//-}"
+  APP="build/${PLAT}/Velan.app"
+  BIN="${APP}/Contents/MacOS/Velan"
+  PLAYER_DIR="${APP}/Contents/Resources/player"
+
+  if [[ ! -x "$BIN" ]]; then
+    echo "error: built binary not found at $BIN" >&2
+    exit 1
+  fi
+
+  if [[ -n "$SRC_MPV" ]]; then
+    echo "==> [$PLAT] Bundling libmpv from $SRC_MPV..."
+    mkdir -p "$PLAYER_DIR"
+    python3 - "$SRC_MPV" "$PLAYER_DIR" <<'PY'
 import os, shutil, subprocess, sys
 from collections import deque
 
@@ -62,20 +59,30 @@ while q:
             cand = os.path.join(src_dir, name)
             if os.path.exists(cand):
                 q.append(os.path.realpath(cand))
-                # Preserve symlink name if realpath differs
                 link_dst = os.path.join(dst_dir, name)
                 if not os.path.exists(link_dst):
                     shutil.copy2(cand, link_dst)
 
 print(f"Bundled {len(os.listdir(dst_dir))} dylibs into {dst_dir}")
 PY
-fi
+  fi
 
-echo "==> Adding LC_RPATH to $BIN..."
-install_name_tool -add_rpath "@executable_path/../Resources/player" "$BIN" 2>/dev/null || true
-install_name_tool -add_rpath "/Applications/IINA.app/Contents/Frameworks" "$BIN" 2>/dev/null || true
+  echo "==> [$PLAT] Adding LC_RPATH to $BIN..."
+  install_name_tool -add_rpath "@executable_path/../Resources/player" "$BIN" 2>/dev/null || true
+  install_name_tool -add_rpath "/Applications/IINA.app/Contents/Frameworks" "$BIN" 2>/dev/null || true
 
-echo "==> Re-signing $APP..."
-codesign --force --deep --sign - "$APP"
+  if [[ -f "assets/Velan.icns" ]]; then
+    echo "==> [$PLAT] Bundling Velan.icns..."
+    mkdir -p "${APP}/Contents/Resources"
+    cp "assets/Velan.icns" "${APP}/Contents/Resources/AppIcon.icns"
+    /usr/libexec/PlistBuddy -c "Delete :CFBundleIconFile" "${APP}/Contents/Info.plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "${APP}/Contents/Info.plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon.icns" "${APP}/Contents/Info.plist"
+  fi
 
-echo "==> Done: $APP"
+  echo "==> [$PLAT] Re-signing $APP..."
+  codesign --force --deep --sign - "$APP"
+  touch "$APP" "${APP}/Contents/Info.plist"
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" 2>/dev/null || true
+  echo "==> Done: $APP"
+done

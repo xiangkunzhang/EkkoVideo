@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/core"
 )
 
 const SourceID = "local"

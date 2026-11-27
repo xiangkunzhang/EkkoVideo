@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    
+    <linearGradient id="bg-sky" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#070E18" />
+      <stop offset="55%" stop-color="#0C1726" />
+      <stop offset="100%" stop-color="#122136" />
+    </linearGradient>
+
+    
+    <radialGradient id="ambient-glow" cx="50%" cy="47%" r="42%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.46" />
+      <stop offset="48%" stop-color="#0284C7" stop-opacity="0.20" />
+      <stop offset="82%" stop-color="#0C1726" stop-opacity="0.03" />
+      <stop offset="100%" stop-color="#0C1726" stop-opacity="0" />
+    </radialGradient>
+
+    
+    <linearGradient id="prism-base" x1="12%" y1="12%" x2="88%" y2="78%">
+      <stop offset="0%" stop-color="#E0F2FE" />
+      <stop offset="28%" stop-color="#38BDF8" />
+      <stop offset="68%" stop-color="#6366F1" />
+      <stop offset="100%" stop-color="#7C3AED" stop-opacity="0.92" />
+    </linearGradient>
+
+    
+    <linearGradient id="sail-glass" x1="18%" y1="8%" x2="82%" y2="85%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.94" />
+      <stop offset="42%" stop-color="#A5F3FC" stop-opacity="0.56" />
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0.10" />
+    </linearGradient>
+
+    
+    <linearGradient id="rim-light" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.96" />
+      <stop offset="45%" stop-color="#7DD3FC" stop-opacity="0.72" />
+      <stop offset="100%" stop-color="#A78BFA" stop-opacity="0.88" />
+    </linearGradient>
+
+    
+    <linearGradient id="ripple-grad" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.35" />
+      <stop offset="32%" stop-color="#67E8F9" stop-opacity="1" />
+      <stop offset="72%" stop-color="#38BDF8" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.18" />
+    </linearGradient>
+
+    
+    <filter id="soft-glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="ripple-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4.5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    
+    <path id="play-shape" d="M 185 142
+             C 185 127, 201 118, 214 126
+             L 365 227
+             C 377 235, 377 253, 365 261
+             L 214 362
+             C 201 370, 185 361, 185 346
+             Z" />
+
+    <clipPath id="play-clip">
+      <use href="#play-shape" />
+    </clipPath>
+  </defs>
+
+  
+  <rect width="512" height="512" fill="url(#bg-sky)" />
+
+  
+  <circle cx="256" cy="244" r="215" fill="url(#ambient-glow)" />
+
+  
+  <path d="M 168 331
+           C 116 339, 102 361, 136 378
+           C 182 400, 304 398, 368 371
+           C 386 363, 396 355, 400 347
+           C 391 358, 376 369, 353 378
+           C 286 405, 166 406, 123 383
+           C 88 364, 108 337, 168 331 Z" fill="url(#ripple-grad)" filter="url(#ripple-glow)" />
+
+  
+  <g filter="url(#soft-glow)">
+    
+    <use href="#play-shape" fill="url(#prism-base)" fill-opacity="0.88" />
+
+    
+    <g clip-path="url(#play-clip)">
+      
+      <path d="M 196 118
+               C 242 184, 268 252, 260 314
+               C 256 340, 232 358, 194 368
+               L 385 260
+               L 385 224 Z" fill="url(#sail-glass)" />
+
+      
+      <rect x="185" y="120" width="14" height="250" fill="#FFFFFF" fill-opacity="0.34" />
+    </g>
+
+    
+    <use href="#play-shape" fill="none" stroke="url(#rim-light)" stroke-width="3.2" />
+  </g>
+</svg>

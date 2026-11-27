@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/core"
 )
 
 var attrPattern = regexp.MustCompile(`([a-zA-Z0-9_-]+)="([^"]*)"`)

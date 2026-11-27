@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/upstream"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/upstream"
 )
 
 // useStableTestDeviceDir points the device-credential cache at a stable

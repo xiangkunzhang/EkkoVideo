@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/core"
 )
 
 func TestProbeLiveHongguo(t *testing.T) {

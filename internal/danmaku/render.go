@@ -45,8 +45,8 @@ func NewRenderer() *Renderer {
 
 func (r *Renderer) MakeSprite(text string, col uint32, cfg Config) *Sprite {
 	fontSz := float32(max(14, min(36, cfg.FontSize)))
-	estW := estimateWidth(text, fontSz)
-	estH := fontSz + 12
+	estW := estimateWidth(text, fontSz) + 6
+	estH := fontSz + 16
 	sp := &Sprite{w: estW, h: estH}
 
 	color := ui.RGB(uint8(col>>16), uint8(col>>8), uint8(col))
@@ -55,7 +55,8 @@ func (r *Renderer) MakeSprite(text string, col uint32, cfg Config) *Sprite {
 	}
 	alpha := float32(max(0.2, min(1.0, cfg.Opacity)))
 	color = color.Alpha(alpha)
-	ink := ui.RGBA(0, 0, 0, 0.75*alpha)
+	ink := ui.RGBA(0, 0, 0, 0.92*alpha)
+	shadow := ui.RGBA(0, 0, 0, 0.58*alpha)
 
 	slots := r.slots
 	go func() {
@@ -64,11 +65,17 @@ func (r *Renderer) MakeSprite(text string, col uint32, cfg Config) *Sprite {
 		img := ui.Render(func(c *ui.Context) {
 			c.Root().Background(ui.Transparent)
 			ui.Box(c).Fill().Draw(func(p *ui.Painter, rect ui.Rect) {
+				// Soft drop shadow for bright scenes
+				p.RichText(rect.X+5.5, rect.Y+5.5, estW-6, ui.Span{Text: text, Size: fontSz, Weight: 600, Color: shadow})
+				// 8-direction high-contrast outline
 				outline := ui.Span{Text: text, Size: fontSz, Weight: 600, Color: ink}
-				for _, off := range [][2]float32{{-1, 0}, {1, 0}, {0, -1}, {0, 1}} {
-					p.RichText(rect.X+4+off[0], rect.Y+4+off[1], estW-4, outline)
+				for _, off := range [][2]float32{
+					{-1.25, 0}, {1.25, 0}, {0, -1.25}, {0, 1.25},
+					{-1, -1}, {1, -1}, {-1, 1}, {1, 1},
+				} {
+					p.RichText(rect.X+4+off[0], rect.Y+4+off[1], estW-6, outline)
 				}
-				p.RichText(rect.X+4, rect.Y+4, estW-4, ui.Span{Text: text, Size: fontSz, Weight: 600, Color: color})
+				p.RichText(rect.X+4, rect.Y+4, estW-6, ui.Span{Text: text, Size: fontSz, Weight: 600, Color: color})
 			})
 		}, int(math.Ceil(float64(estW))), int(math.Ceil(float64(estH))), 2)
 		sp.bmp.Store(ui.NewBitmap(img))

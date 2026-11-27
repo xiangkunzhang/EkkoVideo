@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/safego"
+	"github.com/xiangkunzhang/Velan/internal/infra/safego"
 )
 
 const (

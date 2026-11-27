@@ -1,4 +1,4 @@
-// Package theme defines shared icons, colors, and typography helpers for EkkoVideo.
+// Package theme defines shared icons, colors, and typography helpers for Velan.
 package theme
 
 import "github.com/egoist/mygo/ui"

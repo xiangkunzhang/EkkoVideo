@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/hongguo"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/hongguo"
 )
 
 const moovCacheTTL = 10 * time.Minute

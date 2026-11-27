@@ -11,8 +11,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/legacymodel"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/upstream"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/legacymodel"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/upstream"
 )
 
 const relatedPlanPath = "/reading/bookapi/plan/v:version/"

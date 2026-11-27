@@ -1,4 +1,4 @@
-# AGENTS.md — EkkoVideo 开发约束
+# AGENTS.md — Velan 开发约束
 
 > 修改代码或新增功能前，先阅读本文档以及 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/ROADMAP.md](docs/ROADMAP.md)。
 

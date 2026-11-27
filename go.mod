@@ -1,4 +1,4 @@
-module github.com/xiangkunzhang/EkkoVideo
+module github.com/xiangkunzhang/Velan
 
 go 1.27.3
 

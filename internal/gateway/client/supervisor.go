@@ -1,4 +1,4 @@
-// Package client supervises the EkkoGateway child process and provides an
+// Package client supervises the VelanGateway child process and provides an
 // authenticated HTTP client for the main GUI process.
 package client
 
@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/gateway/server"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/safego"
+	"github.com/xiangkunzhang/Velan/internal/gateway/server"
+	"github.com/xiangkunzhang/Velan/internal/infra/safego"
 )
 
 // Status describes the current state of the supervised gateway child process.
@@ -155,7 +155,7 @@ func (s *Supervisor) spawnOnce(ctx context.Context) error {
 
 	token := randomToken()
 	cmd := exec.Command(exe, args...)
-	cmd.Env = append(os.Environ(), "EKKO_GW_TOKEN="+token)
+	cmd.Env = append(os.Environ(), "VELAN_GW_TOKEN="+token)
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
 		return err

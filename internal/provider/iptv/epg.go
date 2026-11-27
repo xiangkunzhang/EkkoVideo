@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/core"
 )
 
 // EPGStore holds parsed XMLTV programmes indexed by channel id and lowercase display name.

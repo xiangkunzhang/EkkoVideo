@@ -5,7 +5,7 @@ import (
 	"sort"
 	"unicode/utf8"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/core"
 )
 
 // FlyingItem represents an active danmaku item moving across the video canvas.
@@ -51,6 +51,12 @@ func (s *Scheduler) Reset() {
 	s.lanes = [24]laneState{}
 	s.nextIdx = 0
 	s.hasPos = false
+}
+
+// Clear removes all loaded comments and resets active playback state.
+func (s *Scheduler) Clear() {
+	s.comments = nil
+	s.Reset()
 }
 
 // Seek repositions the read cursor and clears active on-screen danmaku.

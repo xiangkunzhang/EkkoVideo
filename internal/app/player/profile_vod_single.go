@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
-	"github.com/xiangkunzhang/EkkoVideo/internal/engine/mpv"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/engine/mpv"
 )
 
 // VODSingleProfile implements PlayerProfile for local files and single VOD playback.
@@ -17,7 +17,7 @@ func (p *VODSingleProfile) ID() string { return "vod_single" }
 
 func (p *VODSingleProfile) TopBar(c *ui.Context, st *PlayerViewState) {
 	white := theme.White()
-	title := "EkkoVideo"
+	title := "Velan"
 	if st.Session != nil && st.Session.Source != nil && st.Session.Source.Title != "" {
 		title = st.Session.Source.Title
 	}
@@ -58,11 +58,6 @@ func (p *VODSingleProfile) BottomBar(c *ui.Context, st *PlayerViewState) {
 	ui.Column(c).Absolute().Bottom(14).Left(18).Right(18).
 		Padding(10, 14).Radius(12).Background(ui.RGBA(12, 14, 18, 0.84)).
 		Border(1, ui.RGBA(255, 255, 255, 0.1)).Gap(8).Children(func() {
-		// Track / Aspect popup menu anchored above bottom bar
-		if st.ActiveMenu != "" {
-			renderPopupMenu(c, st)
-		}
-
 		// Seek bar
 		if dur > 0 {
 			val := pos
@@ -141,20 +136,12 @@ func (p *VODSingleProfile) BottomBar(c *ui.Context, st *PlayerViewState) {
 
 			// Right: Speed, Audio, Subtitles, Aspect, Screenshot
 			spdLabel := fmt.Sprintf("%.2gx", st.Snap.Speed)
-			if pillBtn(c, "speed-btn", spdLabel, st.Snap.Speed != 1.0).Clicked() && st.OnSpeed != nil {
+			if st.Snap.Speed <= 0 {
+				spdLabel = "1x"
+			}
+			if pillBtn(c, "speed-btn", spdLabel, st.Snap.Speed != 1.0 && st.Snap.Speed > 0 || st.ActiveMenu == "speed").Clicked() {
 				st.Touch(c.Now())
-				next := 1.0
-				switch {
-				case st.Snap.Speed < 1.2:
-					next = 1.25
-				case st.Snap.Speed < 1.45:
-					next = 1.5
-				case st.Snap.Speed < 1.9:
-					next = 2.0
-				default:
-					next = 1.0
-				}
-				st.OnSpeed(next)
+				toggleMenu(st, "speed")
 			}
 			if iconBtn(c, "audio-btn", theme.IconAudio, "音轨", st.ActiveMenu == "audio").Clicked() {
 				st.Touch(c.Now())
@@ -182,6 +169,14 @@ func (p *VODSingleProfile) BottomBar(c *ui.Context, st *PlayerViewState) {
 			}
 		})
 	})
+
+	if st.ActiveMenu != "" {
+		bottomOff := float32(72)
+		if dur > 0 {
+			bottomOff = 96
+		}
+		renderPopupMenuAt(c, st, bottomOff)
+	}
 }
 
 func (p *VODSingleProfile) SideOrOverlay(c *ui.Context, st *PlayerViewState) {
@@ -374,11 +369,50 @@ func toggleMenu(st *PlayerViewState, name string) {
 	}
 }
 
-func renderPopupMenu(c *ui.Context, st *PlayerViewState) {
+func renderPopupMenuAt(c *ui.Context, st *PlayerViewState, bottomOff float32) {
 	white := theme.White()
-	ui.Column(c.Key("popup-menu")).FillWidth().Padding(6, 8).Radius(8).
-		Background(ui.RGBA(26, 28, 34, 0.96)).Border(1, ui.RGBA(255, 255, 255, 0.1)).Gap(4).Children(func() {
+	menuW := float32(200)
+	rightOff := float32(24)
+	switch st.ActiveMenu {
+	case "speed":
+		menuW, rightOff = 156, 176
+	case "audio":
+		menuW, rightOff = 220, 132
+	case "sub":
+		menuW, rightOff = 220, 102
+	case "danmaku":
+		menuW, rightOff = 296, 68
+	case "aspect":
+		menuW, rightOff = 148, 42
+	}
+	ui.Column(c.Key("popup-menu")).Absolute().Bottom(bottomOff).Right(rightOff).Width(menuW).
+		Padding(6, 8).Radius(10).Background(ui.RGBA(20, 22, 28, 0.96)).
+		Border(1, ui.RGBA(255, 255, 255, 0.12)).Gap(4).Children(func() {
 		switch st.ActiveMenu {
+		case "speed":
+			for _, sp := range []struct {
+				v     float64
+				label string
+			}{
+				{0.5, "0.5x"},
+				{0.75, "0.75x"},
+				{1.0, "1.0x（正常）"},
+				{1.25, "1.25x"},
+				{1.5, "1.5x"},
+				{2.0, "2.0x"},
+			} {
+				cur := st.Snap.Speed
+				if cur <= 0 {
+					cur = 1.0
+				}
+				active := cur > sp.v-0.05 && cur < sp.v+0.05
+				if menuRow(c, fmt.Sprintf("spd-%.2f", sp.v), sp.label, active).Clicked() {
+					st.ActiveMenu = ""
+					if st.OnSpeed != nil {
+						st.OnSpeed(sp.v)
+					}
+				}
+			}
 		case "aspect":
 			for _, opt := range []struct{ id, label string }{
 				{"auto", "原始比例"}, {"16:9", "16:9"}, {"4:3", "4:3"}, {"fill", "填充裁切"},
@@ -420,9 +454,13 @@ func renderPopupMenu(c *ui.Context, st *PlayerViewState) {
 				}
 			}
 		case "danmaku":
-			onLabel := "弹幕：已开启 (D)"
+			dmCount := 0
+			if st.DanmakuSched != nil {
+				dmCount = st.DanmakuSched.Count()
+			}
+			onLabel := fmt.Sprintf("弹幕：已开启 · %d 条 (D)", dmCount)
 			if !st.DanmakuCfg.Enabled {
-				onLabel = "弹幕：已关闭 (D)"
+				onLabel = fmt.Sprintf("弹幕：已关闭 · %d 条 (D)", dmCount)
 			}
 			if menuRow(c, "dm-toggle", onLabel, st.DanmakuCfg.Enabled).Clicked() {
 				if st.OnToggleDanmaku != nil {
@@ -479,6 +517,15 @@ func renderPopupMenu(c *ui.Context, st *PlayerViewState) {
 					}
 				}
 			})
+			if menuRow(c, "dm-reset", "恢复默认弹幕设置", false).Clicked() {
+				st.DanmakuCfg.FontSize = 20
+				st.DanmakuCfg.Opacity = 0.88
+				st.DanmakuCfg.Speed = 1.0
+				st.DanmakuCfg.Area = 0.50
+				if st.OnDanmakuChanged != nil {
+					st.OnDanmakuChanged()
+				}
+			}
 			if menuRow(c, "dm-load-file", "加载本地 XML / ASS 弹幕…", false).Clicked() {
 				st.ActiveMenu = ""
 				if st.OnLoadDanmakuFile != nil {

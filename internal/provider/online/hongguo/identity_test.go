@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/upstream"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/upstream"
 )
 
 // roundTripFunc turns a function into an http.RoundTripper.

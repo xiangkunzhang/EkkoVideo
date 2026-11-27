@@ -79,7 +79,7 @@ var (
 )
 
 func findLibMPV() string {
-	if p := os.Getenv("EKKO_LIBMPV"); p != "" {
+	if p := os.Getenv("VELAN_LIBMPV"); p != "" {
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}

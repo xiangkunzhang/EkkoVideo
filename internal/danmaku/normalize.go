@@ -1,4 +1,4 @@
-// Package danmaku implements EkkoVideo's pure-Go danmaku normalization,
+// Package danmaku implements Velan's pure-Go danmaku normalization,
 // filtering, clock-synchronized lane scheduling, XML/ASS parsing, and 2x bitmap rendering.
 package danmaku
 
@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/core"
 )
 
 var emojiReplacer = strings.NewReplacer(

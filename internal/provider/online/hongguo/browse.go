@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/legacymodel"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/legacymodel"
 )
 
 // RankBoard fetches a public Hongguo rank page (hot-drama, hot-real-drama, hot-comic-drama, hot-ai-drama).

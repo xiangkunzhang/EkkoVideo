@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/upstream"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/upstream"
 )
 
 // 上游用业务码表达"这台设备不被接受"。

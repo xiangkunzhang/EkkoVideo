@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    
+    <radialGradient id="loader-glow" cx="50%" cy="48%" r="46%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.46" />
+      <stop offset="50%" stop-color="#0284C7" stop-opacity="0.18" />
+      <stop offset="85%" stop-color="#0C1726" stop-opacity="0.02" />
+      <stop offset="100%" stop-color="#0C1726" stop-opacity="0" />
+    </radialGradient>
+
+    
+    <linearGradient id="loader-prism" x1="12%" y1="12%" x2="88%" y2="78%">
+      <stop offset="0%" stop-color="#E0F2FE" />
+      <stop offset="28%" stop-color="#38BDF8" />
+      <stop offset="68%" stop-color="#6366F1" />
+      <stop offset="100%" stop-color="#7C3AED" stop-opacity="0.92" />
+    </linearGradient>
+
+    
+    <linearGradient id="loader-sail" x1="18%" y1="8%" x2="82%" y2="85%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.94" />
+      <stop offset="42%" stop-color="#A5F3FC" stop-opacity="0.56" />
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0.10" />
+    </linearGradient>
+
+    
+    <linearGradient id="loader-rim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.96" />
+      <stop offset="45%" stop-color="#7DD3FC" stop-opacity="0.72" />
+      <stop offset="100%" stop-color="#A78BFA" stop-opacity="0.88" />
+    </linearGradient>
+
+    
+    <linearGradient id="loader-ripple" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.35" />
+      <stop offset="32%" stop-color="#67E8F9" stop-opacity="1" />
+      <stop offset="72%" stop-color="#38BDF8" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.18" />
+    </linearGradient>
+
+    
+    <filter id="loader-soft-glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="loader-ripple-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    
+    <path id="loader-play-shape" d="M 129 86
+             C 129 71, 145 62, 158 70
+             L 309 171
+             C 321 179, 321 197, 309 205
+             L 158 306
+             C 145 314, 129 305, 129 290
+             Z" />
+
+    <clipPath id="loader-play-clip">
+      <use href="#loader-play-shape" />
+    </clipPath>
+  </defs>
+
+  
+  <circle cx="200" cy="188" r="185" fill="url(#loader-glow)">
+    <animate attributeName="opacity" values="0.65;1;0.65" dur="2.6s" repeatCount="indefinite" />
+    <animate attributeName="r" values="172;190;172" dur="2.6s" repeatCount="indefinite" />
+  </circle>
+
+  
+  <g transform="translate(200, 315)">
+    <path d="M -88 -40
+             C -140 -32, -154 -10, -120 7
+             C -74 29, 48 27, 112 0
+             C 130 -8, 140 -16, 144 -24
+             C 135 -13, 120 -2, 97 7
+             C 30 34, -90 35, -133 12
+             C -168 -7, -148 -34, -88 -40 Z" fill="url(#loader-ripple)" filter="url(#loader-ripple-glow)">
+      <animateTransform attributeName="transform" type="scale" values="1 1; 1.05 0.96; 1 1" dur="2.6s" repeatCount="indefinite" />
+    </path>
+  </g>
+
+  
+  <g filter="url(#loader-soft-glow)">
+    <animateTransform attributeName="transform" type="translate" values="0 0; 0 -7; 0 0" dur="2.6s" repeatCount="indefinite" />
+
+    
+    <use href="#loader-play-shape" fill="url(#loader-prism)" fill-opacity="0.88" />
+
+    
+    <g clip-path="url(#loader-play-clip)">
+      <path d="M 140 62
+               C 186 128, 212 196, 204 258
+               C 200 284, 176 302, 138 312
+               L 329 204
+               L 329 168 Z" fill="url(#loader-sail)" />
+
+      
+      <rect x="129" y="64" width="14" height="250" fill="#FFFFFF" fill-opacity="0.34" />
+    </g>
+
+    
+    <use href="#loader-play-shape" fill="none" stroke="url(#loader-rim)" stroke-width="3.2" />
+  </g>
+</svg>

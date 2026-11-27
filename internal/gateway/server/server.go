@@ -1,4 +1,4 @@
-// Package server implements the headless EkkoGateway HTTP server that runs in
+// Package server implements the headless VelanGateway HTTP server that runs in
 // an isolated child process (--gateway) and handles online provider protocols
 // and stream proxying.
 package server
@@ -37,10 +37,10 @@ type Options struct {
 func Run(ctx context.Context, opts Options) error {
 	token := opts.Token
 	if token == "" {
-		token = os.Getenv("EKKO_GW_TOKEN")
+		token = os.Getenv("VELAN_GW_TOKEN")
 	}
 	if token == "" {
-		return errors.New("gateway: missing EKKO_GW_TOKEN")
+		return errors.New("gateway: missing VELAN_GW_TOKEN")
 	}
 	out := opts.Out
 	if out == nil {
@@ -59,7 +59,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	dataDir := opts.DataDir
 	if dataDir == "" {
-		dataDir = os.Getenv("EKKO_DATA_DIR")
+		dataDir = os.Getenv("VELAN_DATA_DIR")
 	}
 	gw := newGatewayApp(dataDir, ln.Addr().String())
 

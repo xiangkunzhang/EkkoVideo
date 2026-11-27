@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/upstream"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/upstream"
 )
 
 // v5 播放接口的设备声明。

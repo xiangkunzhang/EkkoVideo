@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/provider/online"
 )
 
 type gatewayApp struct {

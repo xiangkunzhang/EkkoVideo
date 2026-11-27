@@ -1,4 +1,4 @@
-// Package core defines EkkoVideo's UI-independent domain models, provider
+// Package core defines Velan's UI-independent domain models, provider
 // contracts, playback queue, history, settings, keymap, and session state.
 package core
 

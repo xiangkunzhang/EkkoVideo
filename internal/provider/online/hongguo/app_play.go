@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/upstream"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/upstream"
 )
 
 var appPlayHosts = []string{

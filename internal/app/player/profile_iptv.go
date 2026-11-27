@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/infra/imageloader"
 )
 
 const iptvDwellDelay = 1 * time.Second
@@ -18,6 +19,7 @@ type IPTVProfile struct {
 	DrawerMode string // "channels" | "epg"
 	NowProgram string
 	EPGList    []core.Programme
+	Images     *imageloader.Loader
 
 	// Dwell zapping state
 	PendingIdx   int
@@ -96,9 +98,6 @@ func (p *IPTVProfile) BottomBar(c *ui.Context, st *PlayerViewState) {
 	ui.Column(c).Absolute().Bottom(14).Left(18).Right(18).
 		Padding(10, 14).Radius(12).Background(ui.RGBA(12, 14, 18, 0.84)).
 		Border(1, ui.RGBA(255, 255, 255, 0.1)).Gap(8).Children(func() {
-		if st.ActiveMenu != "" {
-			p.renderIPTVMenu(c, st)
-		}
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 			// Live badge + Volume
 			ui.Box(c).Padding(2, 8).Radius(5).Background(ui.RGBA(229, 57, 53, 0.85)).Children(func() {
@@ -166,18 +165,22 @@ func (p *IPTVProfile) BottomBar(c *ui.Context, st *PlayerViewState) {
 			}
 		})
 	})
+	if st.ActiveMenu != "" {
+		p.renderIPTVMenu(c, st)
+	}
 }
 
 func (p *IPTVProfile) renderIPTVMenu(c *ui.Context, st *PlayerViewState) {
 	if st.ActiveMenu == "aspect" {
-		renderPopupMenu(c, st)
+		renderPopupMenuAt(c, st, 72)
 		return
 	}
 	if st.ActiveMenu != "lines" || st.Session == nil || st.Session.Source == nil {
 		return
 	}
-	ui.Column(c.Key("iptv-line-menu")).FillWidth().Padding(6, 8).Radius(8).
-		Background(ui.RGBA(26, 28, 34, 0.96)).Border(1, ui.RGBA(255, 255, 255, 0.1)).Gap(4).Children(func() {
+	ui.Column(c.Key("iptv-line-menu")).Absolute().Bottom(72).Right(120).Width(196).
+		Padding(6, 8).Radius(10).Background(ui.RGBA(20, 22, 28, 0.96)).
+		Border(1, ui.RGBA(255, 255, 255, 0.12)).Gap(4).Children(func() {
 		for i, ln := range st.Session.Source.Lines {
 			if menuRow(c, fmt.Sprintf("ln-%d", i), ln.Label, i == st.Session.LineIndex).Clicked() {
 				st.ActiveMenu = ""
@@ -224,15 +227,30 @@ func (p *IPTVProfile) SideOrOverlay(c *ui.Context, st *PlayerViewState) {
 				if airing {
 					bg = ui.RGBA(90, 150, 230, 0.25)
 				}
-				ui.Row(c.Key(fmt.Sprintf("epg-%d", i))).FillWidth().Padding(8, 10).Radius(7).
-					Background(bg).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Textf(c, "%s–%s", pr.Start.Format("15:04"), pr.End.Format("15:04")).
-						FontSize(11).TextColor(ui.RGBA(255, 255, 255, 0.55)).FontFeatures("tnum").Width(82)
-					col := ui.RGBA(255, 255, 255, 0.88)
-					if airing {
-						col = ui.Hex("#7cc0ff")
+				ui.Column(c.Key(fmt.Sprintf("epg-%d", i))).FillWidth().Padding(8, 10).Radius(7).
+					Background(bg).Gap(5).Children(func() {
+					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+						ui.Textf(c, "%s–%s", pr.Start.Format("15:04"), pr.End.Format("15:04")).
+							FontSize(11).TextColor(ui.RGBA(255, 255, 255, 0.55)).FontFeatures("tnum").Width(82)
+						col := ui.RGBA(255, 255, 255, 0.88)
+						if airing {
+							col = ui.Hex("#7cc0ff")
+						}
+						ui.Text(c, pr.Title).FontSize(12.5).TextColor(col).SingleLine().Grow(1).MinWidth(0)
+					})
+					if airing && pr.End.After(pr.Start) {
+						total := pr.End.Sub(pr.Start).Seconds()
+						elapsed := now.Sub(pr.Start).Seconds()
+						pct := float32(max(0, min(1, elapsed/total)))
+						remMin := max(1, int(pr.End.Sub(now).Minutes()+0.5))
+						ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+							ui.Box(c).Grow(1).MinWidth(0).Height(3).Radius(1.5).
+								Background(ui.RGBA(255, 255, 255, 0.14)).Children(func() {
+								ui.Box(c).Width(pct * 170).Height(3).Radius(1.5).Background(ui.Hex("#38BDF8"))
+							})
+							ui.Textf(c, "剩 %d 分钟", remMin).FontSize(10.5).TextColor(ui.Hex("#7cc0ff")).FontFeatures("tnum")
+						})
 					}
-					ui.Text(c, pr.Title).FontSize(12.5).TextColor(col).SingleLine().Grow(1).MinWidth(0)
 				})
 			}
 			return
@@ -256,6 +274,14 @@ func (p *IPTVProfile) SideOrOverlay(c *ui.Context, st *PlayerViewState) {
 			row.Children(func() {
 				ui.Row(c).Fill().AlignItems(ui.Center).Gap(8).Children(func() {
 					ui.Textf(c, "%03d", it.Index).FontSize(11).TextColor(ui.RGBA(255, 255, 255, 0.5)).FontFeatures("tnum").Width(28)
+					if p.Images != nil && it.Poster != "" {
+						ui.Box(c).Width(24).Height(18).Shrink(0).Radius(4).Clip().
+							Background(ui.RGBA(255, 255, 255, 0.06)).Center().Children(func() {
+							if bmp, alpha := p.Images.Get(c, it.Poster); bmp != nil {
+								ui.Image(c, bmp).Fill().Fit(ui.Contain).Opacity(alpha)
+							}
+						})
+					}
 					col := white
 					if active {
 						col = ui.Hex("#7cc0ff")

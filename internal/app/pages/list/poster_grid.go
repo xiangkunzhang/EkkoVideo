@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/imageloader"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/infra/imageloader"
 )
 
 // PosterGridState holds feed and filter state for one online/media-server poster grid.
@@ -23,6 +23,7 @@ type PosterGridState struct {
 	Items      []core.Item
 	Seen       map[string]bool
 	NextCursor string
+	Total      int
 	HasMore    bool
 	Started    bool
 	Loading    bool
@@ -36,6 +37,7 @@ func (s *PosterGridState) ResetFeed() {
 	s.Items = nil
 	s.Seen = make(map[string]bool)
 	s.NextCursor = ""
+	s.Total = 0
 	s.HasMore = true
 	s.Started = false
 	s.Loading = false
@@ -57,6 +59,9 @@ func (s *PosterGridState) AppendPage(p core.Page) {
 		added++
 	}
 	s.NextCursor = p.Next
+	if p.Total > 0 {
+		s.Total = p.Total
+	}
 	s.HasMore = p.Next != "" && added > 0
 }
 
@@ -106,10 +111,38 @@ func PosterGridPage(c *ui.Context, st *PosterGridState, img *imageloader.Loader,
 							act.OnSelectMode(m.ID)
 						}
 					}
+					ui.Spacer(c)
+					if len(st.Items) > 0 {
+						stat := fmt.Sprintf("已加载 %d 部", len(st.Items))
+						if st.Total > 0 {
+							stat = fmt.Sprintf("共 %d 部 · 已加载 %d", st.Total, len(st.Items))
+						}
+						ui.Text(c, stat).FontSize(11.5).TextColor(t.TextMuted).FontFeatures("tnum")
+					}
+					if st.HasMore && act.OnLoadMore != nil {
+						lbl := "加载更多"
+						if st.Loading {
+							lbl = "加载中…"
+						}
+						mb := ui.ButtonBase(c.Key("pg-load-more")).Height(24).Padding(0, 10).Radius(6).
+							Background(t.Text.Alpha(0.06)).Cursor(ui.CursorPointer)
+						mb.Children(func() {
+							ui.Text(c, lbl).FontSize(11.5).TextColor(t.TextMuted)
+						})
+						if mb.Clicked() && !st.Loading {
+							act.OnLoadMore()
+						}
+					}
 				})
 				if len(st.Categories) > 0 && (st.Mode == "rank" || st.Mode == "category") {
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 						for _, cat := range st.Categories {
+							if st.SourceID == "online:hongguo" {
+								isRankCat := cat.ID == "hot-drama" || cat.ID == "hot-real-drama" || cat.ID == "new-drama"
+								if (st.Mode == "rank" && !isRankCat) || (st.Mode == "category" && isRankCat) {
+									continue
+								}
+							}
 							active := st.Category == cat.ID
 							b := ui.ButtonBase(c.Key("cat-"+cat.ID)).Height(26).Padding(0, 10).Radius(6).Cursor(ui.CursorPointer)
 							if active {
@@ -134,7 +167,7 @@ func PosterGridPage(c *ui.Context, st *PosterGridState, img *imageloader.Loader,
 				posterEmptyState(c, st, topPad, act.OnLoadMore)
 				return
 			}
-			w, _ := c.Size()
+			w, h := c.Size()
 			const cellMinW = float32(176)
 			const padX = float32(24)
 			gap := c.Theme().Space(2)
@@ -144,6 +177,11 @@ func PosterGridPage(c *ui.Context, st *PosterGridState, img *imageloader.Loader,
 			rowH := (cellW-16)*4/3 + 64
 
 			n := len(st.Items)
+			rows := (n + cols - 1) / cols
+			viewH := max(1, h-topPad-28)
+			if float32(rows)*rowH <= viewH+rowH*0.5 && st.HasMore && !st.Loading && act.OnLoadMore != nil {
+				act.OnLoadMore()
+			}
 			ui.GridView(c, &st.GridState, n, cellMinW, rowH, func(i int) {
 				posterCard(c, st.Items[i], img, act)
 				if i >= n-cols*2 && st.HasMore && !st.Loading && act.OnLoadMore != nil {
@@ -168,8 +206,7 @@ func posterEmptyState(c *ui.Context, st *PosterGridState, topPad float32, retryF
 			} else {
 				c.After(wait - since)
 			}
-			ui.Spinner(c).FontSize(22).Label("正在重试")
-			ui.Text(c, "网络不稳定，正在重试…").FontSize(13).TextColor(t.TextMuted)
+			theme.BrandLoader(c, 64, "网络不稳定，正在重试…", t.TextMuted, true)
 		case st.Err != "":
 			ui.Text(c, "加载失败").FontSize(15).FontWeight(600)
 			ui.Text(c, st.Err).FontSize(12.5).TextColor(t.TextMuted).MaxWidth(400).TextAlign(ui.Center)

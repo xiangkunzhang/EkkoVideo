@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/legacymodel"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/upstream"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/legacymodel"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/upstream"
 )
 
 // The timed danmaku lives on the signed App API, not on the public h5 pages.

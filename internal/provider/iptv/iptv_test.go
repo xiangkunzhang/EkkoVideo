@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/core"
 )
 
 func TestParseM3UMergeLinesAndHeaders(t *testing.T) {

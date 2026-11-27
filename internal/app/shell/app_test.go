@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/pages/list"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/logx"
+	"github.com/xiangkunzhang/Velan/internal/app/pages/list"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/infra/logx"
 )
 
 func TestShellNavigationAndOnlineFlowHeadless(t *testing.T) {
@@ -92,7 +92,7 @@ func TestShellNavigationAndOnlineFlowHeadless(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Advance(1e9)
-	if a.router.Path() != "/settings" || !tt.HasText("EkkoGateway 子进程") {
+	if a.router.Path() != "/settings" || !tt.HasText("VelanGateway 子进程") {
 		t.Fatalf("settings path=%q texts=%v", a.router.Path(), tt.Texts())
 	}
 }

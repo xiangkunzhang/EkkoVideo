@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/legacymodel"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/legacymodel"
 )
 
 // Public reviews come from the public h5 SSR pages. No request signing is

@@ -1,4 +1,4 @@
-// Package home renders the EkkoVideo landing page with quick actions and watch history.
+// Package home renders the Velan landing page with quick actions and watch history.
 package home
 
 import (
@@ -6,8 +6,8 @@ import (
 
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/core"
 )
 
 type Actions struct {
@@ -23,6 +23,19 @@ func Page(c *ui.Context, records []core.WatchRecord, listState *ui.ListState, ac
 	topPad := float32(theme.TitleBarHeight + 16)
 	ui.Box(c).Fill().Children(func() {
 		ui.Column(c).Fill().Padding(topPad, 24, 24, 24).Gap(18).Children(func() {
+			// Brand header
+			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+				if badge := theme.BrandBadge(); badge != nil {
+					ui.Box(c).Size(36, 36).Radius(9).Clip().Children(func() {
+						ui.Image(c, badge).Size(36, 36)
+					})
+				}
+				ui.Column(c).Gap(2).Children(func() {
+					ui.Text(c, "Velan · 微澜").FontSize(17).FontWeight(600)
+					ui.Text(c, "本地影音 · 在线短剧 · 原生弹幕 · IPTV").FontSize(12).TextColor(t.TextMuted)
+				})
+			})
+
 			// Quick launch strip
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				if ui.PrimaryButton(c.Key("home-open-file"), "打开视频文件…").Clicked() && act.OnOpenFile != nil {
@@ -43,7 +56,11 @@ func Page(c *ui.Context, records []core.WatchRecord, listState *ui.ListState, ac
 
 			if len(records) == 0 {
 				ui.Column(c).Grow(1).FillWidth().Center().Gap(8).Children(func() {
-					ui.Icon(c, theme.IconFilm).Size(36, 36).TextColor(t.TextMuted.Alpha(0.5))
+					if mark := theme.BrandMark(); mark != nil {
+						ui.Image(c, mark).Size(56, 56).Opacity(0.85)
+					} else {
+						ui.Icon(c, theme.IconFilm).Size(36, 36).TextColor(t.TextMuted.Alpha(0.5))
+					}
 					ui.Text(c, "暂无播放记录").FontSize(14).TextColor(t.TextMuted)
 					ui.Text(c, "打开本地视频、拖入文件，或输入网络流地址开始播放").FontSize(12).TextColor(t.TextMuted.Alpha(0.75))
 				})

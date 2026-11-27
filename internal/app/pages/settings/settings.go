@@ -1,4 +1,4 @@
-// Package settings renders EkkoVideo's preferences and diagnostics page.
+// Package settings renders Velan's preferences and diagnostics page.
 package settings
 
 import (
@@ -6,9 +6,9 @@ import (
 
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
-	gwclient "github.com/xiangkunzhang/EkkoVideo/internal/gateway/client"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	gwclient "github.com/xiangkunzhang/Velan/internal/gateway/client"
 )
 
 type Diagnostics struct {
@@ -74,7 +74,7 @@ func Page(c *ui.Context, cfg *core.Settings, diag Diagnostics, act Actions) {
 					if diag.Gateway.Running {
 						gwState = fmt.Sprintf("运行中 · PID %d · %s", diag.Gateway.PID, diag.Gateway.Addr)
 					}
-					row(c, "EkkoGateway 子进程", fmt.Sprintf("%s（重启次数: %d）", gwState, diag.Gateway.Restarts), func() {
+					row(c, "VelanGateway 子进程", fmt.Sprintf("%s（重启次数: %d）", gwState, diag.Gateway.Restarts), func() {
 						if ui.Button(c.Key("diag-kill-gw"), "模拟崩溃恢复").Clicked() && act.OnSimulateGWCrash != nil {
 							act.OnSimulateGWCrash()
 						}

@@ -1,5 +1,5 @@
 // Package online adapts the 5 online short-drama platforms into unified core models
-// inside the isolated EkkoGateway subprocess.
+// inside the isolated VelanGateway subprocess.
 package online
 
 import (
@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/dsd"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/hongguo"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/huangdou"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/huangju"
-	legacymodel "github.com/xiangkunzhang/EkkoVideo/internal/provider/online/legacymodel"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/yeguo"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/dsd"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/hongguo"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/huangdou"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/huangju"
+	legacymodel "github.com/xiangkunzhang/Velan/internal/provider/online/legacymodel"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/yeguo"
 )
 
 // Manager owns the 5 online platform clients inside the gateway process.
@@ -83,8 +83,16 @@ func (m *Manager) Sections(source string) SectionsResponse {
 		}
 	default: // hongguo
 		return SectionsResponse{
-			Modes: []core.Section{{ID: "recommend", Label: "推荐"}, {ID: "rank", Label: "热榜"}},
+			Modes: []core.Section{
+				{ID: "recommend", Label: "推荐"},
+				{ID: "feed", Label: "随心看"},
+				{ID: "category", Label: "分类"},
+				{ID: "rank", Label: "热榜"},
+			},
 			Categories: []core.Section{
+				{ID: "real-drama", Label: "真人短剧"},
+				{ID: "comic-drama", Label: "动漫短剧"},
+				{ID: "ai-drama", Label: "AI 短剧"},
 				{ID: "hot-drama", Label: "热剧榜"},
 				{ID: "hot-real-drama", Label: "真人热榜"},
 				{ID: "new-drama", Label: "新剧榜"},
@@ -198,13 +206,26 @@ func (m *Manager) Browse(source string, q core.Query) (core.Page, error) {
 	default: // hongguo
 		var res *legacymodel.BrowseResult
 		var err error
-		if mode == "rank" {
+		switch mode {
+		case "feed":
+			res, err = m.Hongguo.RandomFeed(pageNum == 1, pageNum)
+		case "category":
+			cat := q.Category
+			switch cat {
+			case "real-drama", "comic-drama", "ai-drama":
+			default:
+				cat = "real-drama"
+			}
+			res, _, err = m.Hongguo.CategoryBrowse(cat, "", pageNum)
+		case "rank":
 			board := q.Category
-			if board == "" {
+			switch board {
+			case "hot-drama", "hot-real-drama", "new-drama":
+			default:
 				board = "hot-drama"
 			}
 			res, err = m.Hongguo.RankBoard(board, pageNum)
-		} else {
+		default:
 			res, err = m.Hongguo.Recommend(pageNum)
 		}
 		if err != nil {
@@ -639,7 +660,7 @@ func (m *Manager) ResolvePlay(gwAddr, streamToken, source, seriesID, vid string,
 				Danmaku: dmRef,
 			}, nil
 		}
-		// CENC encrypted stream: route through EkkoGateway Range-CENC decryption proxy!
+		// CENC encrypted stream: route through VelanGateway Range-CENC decryption proxy!
 		proxyURL := fmt.Sprintf("http://%s/s/%s/stream.mp4?series_id=%s&ep=%d&definition=%s",
 			gwAddr, streamToken, url.QueryEscape(d.SeriesID), ep, url.QueryEscape(quality))
 		return &core.PlaySource{

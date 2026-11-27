@@ -23,10 +23,38 @@ type History struct {
 }
 
 func NewHistory(initial []WatchRecord) *History {
-	return &History{Records: append([]WatchRecord(nil), initial...)}
+	out := make([]WatchRecord, 0, min(len(initial), maxHistoryEntries))
+	for _, r := range initial {
+		if r.Ref.ID == "" {
+			continue
+		}
+		dup := false
+		for _, kept := range out {
+			if sameSeriesOrItem(kept, r) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, r)
+			if len(out) >= maxHistoryEntries {
+				break
+			}
+		}
+	}
+	return &History{Records: out}
+}
+
+func sameSeriesOrItem(a, b WatchRecord) bool {
+	if a.Ref == b.Ref {
+		return true
+	}
+	return a.SeriesID != "" && a.SeriesID == b.SeriesID && a.Ref.Source == b.Ref.Source
 }
 
 // Record inserts or updates a watch record, moving it to the front.
+// For series episodes (SeriesID != ""), older records of the same series are
+// replaced so "最近观看" keeps one entry per series.
 func (h *History) Record(rec WatchRecord) {
 	if rec.Ref.ID == "" {
 		return
@@ -40,7 +68,7 @@ func (h *History) Record(rec WatchRecord) {
 	out := make([]WatchRecord, 0, min(len(h.Records)+1, maxHistoryEntries))
 	out = append(out, rec)
 	for _, existing := range h.Records {
-		if existing.Ref == rec.Ref {
+		if sameSeriesOrItem(existing, rec) {
 			continue
 		}
 		out = append(out, existing)

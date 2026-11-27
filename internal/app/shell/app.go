@@ -1,5 +1,5 @@
-// Package shell wires the EkkoVideo main window, sidebar navigation, router,
-// local & online playback lifecycle, and the supervised EkkoGateway child process.
+// Package shell wires the Velan main window, sidebar navigation, router,
+// local & online playback lifecycle, and the supervised VelanGateway child process.
 package shell
 
 import (
@@ -13,23 +13,24 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/pages/detail"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/pages/home"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/pages/list"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/pages/settings"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/player"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
-	"github.com/xiangkunzhang/EkkoVideo/internal/danmaku"
-	"github.com/xiangkunzhang/EkkoVideo/internal/engine/mpv"
-	"github.com/xiangkunzhang/EkkoVideo/internal/engine/surface"
-	gwclient "github.com/xiangkunzhang/EkkoVideo/internal/gateway/client"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/imageloader"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/logx"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/safego"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/store"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/iptv"
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/local"
+	"github.com/xiangkunzhang/Velan/internal/app/pages/detail"
+	"github.com/xiangkunzhang/Velan/internal/app/pages/home"
+	"github.com/xiangkunzhang/Velan/internal/app/pages/list"
+	"github.com/xiangkunzhang/Velan/internal/app/pages/settings"
+	"github.com/xiangkunzhang/Velan/internal/app/player"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/danmaku"
+	"github.com/xiangkunzhang/Velan/internal/engine/mpv"
+	"github.com/xiangkunzhang/Velan/internal/engine/surface"
+	gwclient "github.com/xiangkunzhang/Velan/internal/gateway/client"
+	"github.com/xiangkunzhang/Velan/internal/infra/imageloader"
+	"github.com/xiangkunzhang/Velan/internal/infra/logx"
+	"github.com/xiangkunzhang/Velan/internal/infra/mediakeys"
+	"github.com/xiangkunzhang/Velan/internal/infra/safego"
+	"github.com/xiangkunzhang/Velan/internal/infra/store"
+	"github.com/xiangkunzhang/Velan/internal/provider/iptv"
+	"github.com/xiangkunzhang/Velan/internal/provider/local"
 )
 
 type App struct {
@@ -88,7 +89,7 @@ type App struct {
 	onPlayer        bool
 }
 
-// Run starts the EkkoVideo desktop GUI.
+// Run starts the Velan desktop GUI.
 func Run(version string, initialFiles []string) {
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
@@ -106,7 +107,7 @@ func Run(version string, initialFiles []string) {
 	if err != nil {
 		logDir = dataDir
 	}
-	logger := logx.Open(filepath.Join(logDir, "ekkovideo.log"))
+	logger := logx.Open(filepath.Join(logDir, "velan.log"))
 	defer logger.Close()
 
 	a := NewApp(version, dataDir, cacheDir, logger)
@@ -139,7 +140,7 @@ func Run(version string, initialFiles []string) {
 	mygo.App.WhenReady(func() {
 		a.installMenu()
 		a.win = mygo.NewWindow(mygo.WindowOptions{
-			Title:           "EkkoVideo",
+			Title:           "Velan",
 			Width:           1180,
 			Height:          740,
 			MinWidth:        960,
@@ -225,11 +226,56 @@ func NewApp(version, dataDir, cacheDir string, logger *logx.Logger) *App {
 		iptvProfile:   player.NewIPTVProfile(),
 	}
 	a.img = imageloader.New(filepath.Join(cacheDir, "covers"), a.update)
+	a.seriesProfile.Images = a.img
 	a.seriesProfile.OnOpenRelated = func(it core.Item) {
 		a.openDetail(it)
 	}
+	a.seriesProfile.OnRandomNext = func() {
+		if a.playerState.Session != nil && a.playerState.Session.Queue != nil {
+			if it, ok := a.playerState.Session.Queue.Active(); ok {
+				a.playNextRecommendedSeries(it.Ref.Source, it.Extra["seriesId"])
+			}
+		}
+	}
 	a.initIPTVCallbacks()
 	a.initPlayerCallbacks()
+	mediakeys.Init(mediakeys.Handlers{
+		OnPlay: func() {
+			a.update(func() {
+				if a.onPlayer && a.mpv != nil && a.playerState.Snap.Paused {
+					a.mpv.SetProperty("pause", "no")
+				}
+			})
+		},
+		OnPause: func() {
+			a.update(func() {
+				if a.onPlayer && a.mpv != nil && !a.playerState.Snap.Paused {
+					a.mpv.SetProperty("pause", "yes")
+				}
+			})
+		},
+		OnToggle: func() {
+			a.update(func() {
+				if a.onPlayer && a.playerState.OnTogglePlay != nil {
+					a.playerState.OnTogglePlay()
+				}
+			})
+		},
+		OnNext: func() {
+			a.update(func() {
+				if a.onPlayer && a.playerState.OnNext != nil {
+					a.playerState.OnNext()
+				}
+			})
+		},
+		OnPrev: func() {
+			a.update(func() {
+				if a.onPlayer && a.playerState.OnPrev != nil {
+					a.playerState.OnPrev()
+				}
+			})
+		},
+	})
 	return a
 }
 
@@ -336,9 +382,20 @@ func (a *App) view(c *ui.Context) {
 	if a.onPlayer && !onPlayer {
 		a.leavePlayerCleanup()
 	}
-	if !a.onPlayer && onPlayer && a.img != nil {
-		// Release UI poster bitmaps during playback to cap memory.
-		a.img.ClearMemory()
+	if !a.onPlayer && onPlayer {
+		if a.img != nil {
+			// Release UI poster bitmaps during playback to cap memory.
+			a.img.ClearMemory()
+		}
+		// Scheme B: Forward navigation back to /play resumes the previous queue from history.
+		if a.playerState.Session != nil && a.playerState.Session.Phase == core.PhaseIdle && a.playerState.Session.Queue != nil {
+			q := a.playerState.Session.Queue
+			a.update(func() {
+				if a.router.Path() == "/play" && a.playerState.Session != nil && a.playerState.Session.Phase == core.PhaseIdle {
+					a.startQueue(q)
+				}
+			})
+		}
 	}
 	a.onPlayer = onPlayer
 	if !onPlayer && !onDetail {
@@ -395,10 +452,13 @@ func (a *App) view(c *ui.Context) {
 			case r.Match("/iptv"):
 				r.Title("IPTV 电视直播")
 				list.ChannelListPage(c, &a.iptvList, list.ChannelListActions{
+					Images:        a.img,
 					OnAddSub:      func() { a.iptvModalOpen = true },
 					OnRefresh:     a.refreshIPTV,
 					OnSelectGroup: func(g string) { a.iptvList.ActiveGroup = g },
 					OnPlayChannel: a.playIPTVChannel,
+					OnToggleFav:   a.toggleFav,
+					IsFav:         a.favorites.Has,
 				})
 			case r.Match("/online/{id}"):
 				id := "online:" + r.Param("id")
@@ -481,7 +541,15 @@ func (a *App) view(c *ui.Context) {
 
 func (a *App) sidebar(c *ui.Context) {
 	t := c.Theme()
-	ui.Box(c).Height(theme.TitleBarHeight).Shrink(0).DragWindow()
+	ui.Row(c).Height(theme.TitleBarHeight).Padding(0, 14, 0, 82).AlignItems(ui.Center).Gap(8).Shrink(0).DragWindow().Children(func() {
+		if badge := theme.BrandBadge(); badge != nil {
+			ui.Box(c).Size(20, 20).Radius(5).Clip().Children(func() {
+				ui.Image(c, badge).Size(20, 20)
+			})
+		}
+		ui.Text(c, "Velan").FontSize(13.5).FontWeight(600)
+		ui.Text(c, "微澜").FontSize(11).TextColor(t.TextMuted)
+	})
 	selected := a.section
 	sb := ui.Sidebar(c, &selected, func() {
 		ui.SidebarSection(c, "媒体", nil, func() {
@@ -622,6 +690,8 @@ func (a *App) openDetail(it core.Item) {
 		Item:    it,
 		Loading: true,
 	}
+	a.seriesProfile.Related = nil
+	a.seriesProfile.DrawerTab = 0
 	a.router.Push("/detail")
 
 	if a.gateway == nil {
@@ -645,8 +715,22 @@ func (a *App) openDetail(it core.Item) {
 				return
 			}
 			a.detailState.Detail = d
+			for i := range d.Episodes {
+				if d.Episodes[i].Extra == nil {
+					d.Episodes[i].Extra = map[string]string{}
+				}
+				if d.Item.Title != "" {
+					d.Episodes[i].Extra["seriesTitle"] = d.Item.Title
+				}
+				if d.Episodes[i].Poster == "" {
+					d.Episodes[i].Poster = d.Item.Poster
+				}
+			}
 			a.detailState.Related = rel
 			a.seriesProfile.Related = rel
+			if ep := a.resumeEpisodeIndex(a.detailState.Item); ep > 100 {
+				a.detailState.RangeIdx = (ep - 1) / 100
+			}
 		})
 	})
 }
@@ -655,6 +739,7 @@ func (a *App) playDetailEpisode(idx int) {
 	if a.detailState.Detail == nil || len(a.detailState.Detail.Episodes) == 0 {
 		return
 	}
+	a.seriesProfile.Related = a.detailState.Related
 	q := core.NewQueue(a.detailState.Detail.Episodes, idx)
 	a.startQueue(q)
 }
@@ -663,9 +748,27 @@ func (a *App) resumeEpisodeIndex(series core.Item) int {
 	if a.detailState.Detail == nil {
 		return 0
 	}
-	for i, ep := range a.detailState.Detail.Episodes {
-		if _, ok := a.history.Get(ep.Ref); ok {
-			return i + 1
+	eps := a.detailState.Detail.Episodes
+	epByID := make(map[string]int, len(eps))
+	for i, ep := range eps {
+		epByID[ep.Ref.ID] = i + 1
+	}
+	// History.Records is ordered most-recent-first, so the first match is the
+	// latest episode the user actually watched for this series.
+	for _, rec := range a.history.Records {
+		if rec.Ref.Source != series.Ref.Source {
+			continue
+		}
+		if rec.SeriesID == series.Ref.ID || rec.Ref.ID == series.Ref.ID {
+			if idx, ok := epByID[rec.Ref.ID]; ok {
+				return idx
+			}
+			if rec.Episode > 0 && rec.Episode <= len(eps) {
+				return rec.Episode
+			}
+		}
+		if idx, ok := epByID[rec.Ref.ID]; ok {
+			return idx
 		}
 	}
 	return 0
@@ -966,14 +1069,86 @@ func (a *App) ensurePlayerReady() error {
 	return nil
 }
 
+func (a *App) resetPlayerContext(clearSeriesRelated bool, resetIPTV bool) {
+	if a.mpv != nil {
+		a.mpv.Command("stop")
+		if resetIPTV {
+			a.mpv.SetProperty("speed", "1.0")
+		}
+	}
+	if a.playerState.DanmakuSched != nil {
+		a.playerState.DanmakuSched.Clear()
+	}
+	a.playerState.Snap = mpv.Snapshot{}
+	a.playerState.SnapAt = time.Time{}
+	a.playerState.BufferingSince = time.Time{}
+	a.playerState.Seeking = false
+	a.playerState.SeekTarget = 0
+	a.playerState.ActiveMenu = ""
+	a.playerState.OSDMessage = ""
+	a.playerState.OSDUntil = time.Time{}
+
+	if clearSeriesRelated && a.seriesProfile != nil {
+		a.seriesProfile.Related = nil
+		a.seriesProfile.DrawerTab = 0
+		a.playerState.DrawerOpen = false
+		a.playerState.DrawerList = ui.ListState{}
+	}
+	if resetIPTV && a.iptvProfile != nil {
+		a.iptvProfile.PendingIdx = -1
+		a.iptvProfile.PendingUntil = time.Time{}
+		a.iptvProfile.DigitBuf = ""
+		a.iptvProfile.DigitUntil = time.Time{}
+		a.iptvProfile.NowProgram = ""
+		a.iptvProfile.EPGList = nil
+		a.iptvProfile.DrawerMode = "channels"
+	}
+}
+
 func (a *App) startQueue(q *core.Queue) {
 	a.savePlaybackProgress()
+	var prevSource, prevSeries string
+	if a.playerState.Session != nil && a.playerState.Session.Queue != nil {
+		if prev, ok := a.playerState.Session.Queue.Active(); ok {
+			prevSource = prev.Ref.Source
+			prevSeries = prev.Extra["seriesId"]
+		}
+	}
+	nextItem, _ := q.Active()
+	sourceChanged := prevSource != "" && prevSource != nextItem.Ref.Source
+	seriesChanged := prevSeries != "" && prevSeries != nextItem.Extra["seriesId"]
+	a.resetPlayerContext(sourceChanged || seriesChanged, nextItem.Ref.Source != iptv.SourceID || sourceChanged)
+
 	if a.playerState.Session == nil {
 		a.playerState.Session = core.NewPlaybackSession()
 	}
 	gen := a.playerState.Session.BeginResolve(q)
+	a.playerState.DrawerList.ScrollTo(q.Current, ui.Center)
 	a.playerState.Touch(time.Now())
-	a.router.Push("/play")
+	if a.router.Path() != "/play" {
+		a.router.Push("/play")
+	}
+
+	if len(a.seriesProfile.Related) == 0 && nextItem.Extra["seriesId"] != "" {
+		if a.detailState.Item.Ref.ID == nextItem.Extra["seriesId"] && len(a.detailState.Related) > 0 {
+			a.seriesProfile.Related = a.detailState.Related
+		} else if strings.HasPrefix(nextItem.Ref.Source, "online:") && a.gateway != nil {
+			srcID, sid, sTitle := nextItem.Ref.Source, nextItem.Extra["seriesId"], nextItem.Extra["seriesTitle"]
+			safego.Go("gw-player-related", a.logger.Printf, func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				rel, err := a.gateway.Related(ctx, srcID, sid, sTitle)
+				if err != nil || len(rel) == 0 {
+					return
+				}
+				a.update(func() {
+					if a.playerState.Session != nil && a.playerState.Session.Generation == gen {
+						a.seriesProfile.Related = rel
+					}
+				})
+			})
+		}
+	}
 
 	item, ok := q.Active()
 	if !ok {
@@ -1038,6 +1213,13 @@ func (a *App) startQueue(q *core.Queue) {
 					}
 				}
 			} else {
+				if stTitle := item.Extra["seriesTitle"]; stTitle != "" && !strings.Contains(src.Title, stTitle) {
+					if src.Title != "" {
+						src.Title = stTitle + " · " + src.Title
+					} else {
+						src.Title = stTitle
+					}
+				}
 				src.StartAt = a.history.ResumePosition(item.Ref)
 			}
 			if !a.playerState.Session.SetResolved(gen, src) {
@@ -1055,7 +1237,7 @@ func (a *App) startQueue(q *core.Queue) {
 
 func (a *App) loadDanmakuForSource(gen uint64, src *core.PlaySource) {
 	if a.playerState.DanmakuSched != nil {
-		a.playerState.DanmakuSched.Reset()
+		a.playerState.DanmakuSched.Clear()
 	}
 	if src == nil {
 		return
@@ -1120,7 +1302,17 @@ func (a *App) onMPVSnapshot(snap mpv.Snapshot) {
 	}
 	if snap.Loaded {
 		sess.SetPlaying()
+		if snap.Buffering && a.playerState.BufferingSince.IsZero() {
+			a.playerState.BufferingSince = time.Now()
+		} else if !snap.Buffering {
+			a.playerState.BufferingSince = time.Time{}
+		}
 		sess.SetBuffering(snap.Buffering)
+		title := ""
+		if sess.Source != nil {
+			title = sess.Source.Title
+		}
+		mediakeys.UpdateNowPlaying(title, true, !snap.Paused, snap.Position, snap.Duration)
 		if sess.Source != nil && sess.Source.Ref.Source == iptv.SourceID &&
 			sess.LineIndex >= 0 && sess.LineIndex < len(sess.Source.Lines) {
 			a.iptvMgr.RememberWorkingLine(sess.Source.Ref.ID, sess.Source.Lines[sess.LineIndex].ID)
@@ -1129,24 +1321,108 @@ func (a *App) onMPVSnapshot(snap mpv.Snapshot) {
 	if snap.EOF && sess.Phase == core.PhasePlaying {
 		sess.Phase = core.PhaseEnded
 		a.savePlaybackProgress()
-		if a.settings.AutoNext && sess.Queue != nil && sess.Queue.HasNext() {
-			if _, ok := sess.Queue.Next(); ok {
-				a.startQueue(sess.Queue)
+		if a.settings.AutoNext && sess.Queue != nil {
+			if sess.Queue.HasNext() {
+				if _, ok := sess.Queue.Next(); ok {
+					a.startQueue(sess.Queue)
+				}
+			} else if it, ok := sess.Queue.Active(); ok && strings.HasPrefix(it.Ref.Source, "online:") {
+				a.playNextRecommendedSeries(it.Ref.Source, it.Extra["seriesId"])
 			}
 		}
 	}
 }
 
+func (a *App) playNextRecommendedSeries(source, prevSeriesID string) {
+	if a.gateway == nil {
+		return
+	}
+	var cands []core.Item
+	for _, it := range a.seriesProfile.Related {
+		if it.Ref.ID != "" && it.Ref.ID != prevSeriesID {
+			cands = append(cands, it)
+		}
+	}
+	if len(cands) == 0 {
+		for _, it := range a.detailState.Related {
+			if it.Ref.ID != "" && it.Ref.ID != prevSeriesID {
+				cands = append(cands, it)
+			}
+		}
+	}
+
+	a.playerState.ShowOSD(time.Now(), "正在为您挑选下一部短剧…")
+	safego.Go("auto-next-drama", a.logger.Printf, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		var chosen core.Item
+		if len(cands) > 0 {
+			chosen = cands[int(time.Now().UnixNano()%int64(len(cands)))]
+		} else {
+			page, err := a.gateway.Browse(ctx, source, core.Query{Section: "feed"})
+			if err != nil || len(page.Items) == 0 {
+				page, err = a.gateway.Browse(ctx, source, core.Query{Section: "recommend"})
+				if err != nil || len(page.Items) == 0 {
+					return
+				}
+			}
+			var pool []core.Item
+			for _, it := range page.Items {
+				if it.Ref.ID != "" && it.Ref.ID != prevSeriesID {
+					pool = append(pool, it)
+				}
+			}
+			if len(pool) == 0 {
+				pool = page.Items
+			}
+			chosen = pool[int(time.Now().UnixNano()%int64(len(pool)))]
+		}
+
+		d, err := a.gateway.Detail(ctx, chosen.Ref.Source, chosen.Ref.ID)
+		if err != nil || d == nil || len(d.Episodes) == 0 {
+			return
+		}
+		for i := range d.Episodes {
+			if d.Episodes[i].Extra == nil {
+				d.Episodes[i].Extra = map[string]string{}
+			}
+			if d.Item.Title != "" {
+				d.Episodes[i].Extra["seriesTitle"] = d.Item.Title
+			}
+			if d.Episodes[i].Poster == "" {
+				d.Episodes[i].Poster = d.Item.Poster
+			}
+		}
+		rel, _ := a.gateway.Related(ctx, chosen.Ref.Source, chosen.Ref.ID, d.Item.Title)
+
+		a.update(func() {
+			a.detailState = detail.State{
+				Item:    d.Item,
+				Detail:  d,
+				Related: rel,
+			}
+			a.seriesProfile.Related = rel
+			a.playerState.ShowOSD(time.Now(), "即将连播：《"+d.Item.Title+"》")
+			a.startQueue(core.NewQueue(d.Episodes, 0))
+		})
+	})
+}
+
 func (a *App) leavePlayerCleanup() {
 	a.savePlaybackProgress()
-	if a.mpv != nil {
-		a.mpv.Command("stop")
-	}
 	if a.surf != nil {
 		a.surf.Show(false)
 	}
+	mediakeys.UpdateNowPlaying("", false, false, 0, 0)
+	a.resetPlayerContext(true, true)
+	if a.playerState.Session != nil {
+		a.playerState.Session.Generation++
+		a.playerState.Session.Phase = core.PhaseIdle
+		a.playerState.Session.Source = nil
+		a.playerState.Session.LastError = ""
+	}
 	a.playerState.DrawerOpen = false
-	a.playerState.ActiveMenu = ""
 }
 
 func (a *App) savePlaybackProgress() {
@@ -1157,22 +1433,27 @@ func (a *App) savePlaybackProgress() {
 	if sess.Source.Ref.Source == iptv.SourceID {
 		return
 	}
-	var seriesID string
+	var seriesID, poster string
 	var epNo int
 	if sess.Queue != nil {
 		if act, ok := sess.Queue.Active(); ok {
 			seriesID = act.Extra["seriesId"]
+			poster = act.Poster
 			epNo, _ = strconv.Atoi(act.Extra["ep"])
 			if epNo <= 0 {
 				epNo = act.Index
 			}
 		}
 	}
+	if poster == "" && a.detailState.Item.Ref.ID == seriesID {
+		poster = a.detailState.Item.Poster
+	}
 	a.history.Record(core.WatchRecord{
 		Ref:      sess.Source.Ref,
 		SeriesID: seriesID,
 		Episode:  epNo,
 		Title:    sess.Source.Title,
+		Poster:   poster,
 		Position: a.playerState.Snap.Position,
 		Duration: a.playerState.Snap.Duration,
 	})
@@ -1365,7 +1646,7 @@ func (a *App) initPlayerCallbacks() {
 			return
 		}
 		homeDir, _ := os.UserHomeDir()
-		dir := filepath.Join(homeDir, "Pictures", "EkkoVideo")
+		dir := filepath.Join(homeDir, "Pictures", "Velan")
 		_ = os.MkdirAll(dir, 0o755)
 		out := filepath.Join(dir, fmt.Sprintf("shot-%s.png", time.Now().Format("20060102-150405")))
 		a.mpv.Command("screenshot-to-file", out, "video")
@@ -1397,6 +1678,7 @@ func (a *App) initPlayerCallbacks() {
 
 func (a *App) initIPTVCallbacks() {
 	p := player.NewIPTVProfile()
+	p.Images = a.img
 	a.iptvProfile = p
 	p.OnSelectLine = func(lineIdx int) {
 		sess := a.playerState.Session

@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/gateway/server"
+	"github.com/xiangkunzhang/Velan/internal/gateway/server"
 )
 
 func TestMain(m *testing.M) {
-	if os.Getenv("EKKO_TEST_GATEWAY_HELPER") == "1" {
+	if os.Getenv("VELAN_TEST_GATEWAY_HELPER") == "1" {
 		_ = server.Run(context.Background(), server.Options{Port: 0, WatchStdin: true})
 		os.Exit(0)
 	}
@@ -18,7 +18,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestSupervisorStartRecoverAndStop(t *testing.T) {
-	t.Setenv("EKKO_TEST_GATEWAY_HELPER", "1")
+	t.Setenv("VELAN_TEST_GATEWAY_HELPER", "1")
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

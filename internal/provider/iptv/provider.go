@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/core"
 )
 
 const SourceID = "iptv"
@@ -276,7 +276,7 @@ func (m *Manager) fetchResource(ctx context.Context, rawURL, cacheName string) (
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "EkkoVideo/1.0")
+	req.Header.Set("User-Agent", "Velan/1.0")
 	resp, err := m.client.Do(req)
 	if err != nil {
 		if m.cacheDir != "" {

@@ -1,4 +1,4 @@
-//go:build !darwin
+//go:build !darwin && !windows
 
 package surface
 
@@ -6,7 +6,7 @@ import (
 	"errors"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/engine/mpv"
+	"github.com/xiangkunzhang/Velan/internal/engine/mpv"
 )
 
 type stubSurface struct{}

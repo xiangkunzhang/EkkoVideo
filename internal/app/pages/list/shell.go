@@ -5,7 +5,7 @@ package list
 import (
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/app/theme"
+	"github.com/xiangkunzhang/Velan/internal/app/theme"
 )
 
 // Shell renders the shared browse page header, scroll-edge blur, and body slot.

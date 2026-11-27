@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/xiangkunzhang/EkkoVideo/internal/provider/online/upstream"
+	"github.com/xiangkunzhang/Velan/internal/provider/online/upstream"
 )
 
 // skipIfUpstreamUnavailable 把上游的临时不可用（限流、5xx、网络抖动）变成跳过。

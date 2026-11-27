@@ -13,8 +13,8 @@ import (
 	"github.com/ebitengine/purego/objc"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/xiangkunzhang/EkkoVideo/internal/engine/mpv"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/safego"
+	"github.com/xiangkunzhang/Velan/internal/engine/mpv"
+	"github.com/xiangkunzhang/Velan/internal/infra/safego"
 )
 
 type cocoaPoint struct{ X, Y float64 }
@@ -88,7 +88,7 @@ func (s *DarwinSurface) Attach(nsWindow uintptr, engine *mpv.Engine) error {
 
 	glViewClassOnce.Do(func() {
 		glViewClass, glViewClassErr = objc.RegisterClass(
-			"EkkoVideoGLView",
+			"VelanGLView",
 			objc.GetClass("NSOpenGLView"),
 			nil, nil,
 			[]objc.MethodDef{

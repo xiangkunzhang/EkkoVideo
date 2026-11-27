@@ -86,7 +86,7 @@ func newGLSurface(nsWindow uintptr, api *mpvAPI, mpvHandle uintptr) (*glSurface,
 
 	glViewClassOnce.Do(func() {
 		glViewClass, glViewClassErr = objc.RegisterClass(
-			"EkkoSpikeGLView",
+			"VelanSpikeGLView",
 			objc.GetClass("NSOpenGLView"),
 			nil, nil,
 			[]objc.MethodDef{

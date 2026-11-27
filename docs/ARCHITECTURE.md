@@ -1,6 +1,6 @@
-# EkkoVideo 系统架构设计
+# Velan 系统架构设计
 
-> 本文档是 `github.com/xiangkunzhang/EkkoVideo` 的唯一架构基线。所有开发与重构决策均以此为准。
+> 本文档是 `github.com/xiangkunzhang/Velan` 的唯一架构基线。所有开发与重构决策均以此为准。
 
 ---
 
@@ -8,7 +8,7 @@
 
 | 决策项 | 锁定结论 | 说明 |
 | :--- | :--- | :--- |
-| **仓库与模块** | `github.com/xiangkunzhang/EkkoVideo` | 全新独立仓库，与旧 Wails 版完全解耦 |
+| **仓库与模块** | `github.com/xiangkunzhang/Velan` | 全新独立仓库，与旧 Wails 版完全解耦 |
 | **UI 技术栈** | `github.com/egoist/mygo v0.10.0` 原生 UI | **零 WebView、零 HTML/JS、零 CGO**，锁定当前最新稳定版 |
 | **播放引擎** | `libmpv`（通过 `ebitengine/purego` 动态加载） | 唯一视频解码与渲染引擎，所有来源统一归一为 `PlaySource` |
 | **平台优先级** | **macOS 优先** → Windows → Linux | M0–M4 聚焦 macOS（Apple Silicon / Intel）打磨至生产可用，M5 补齐 Windows，M6 覆盖 Linux |
@@ -21,7 +21,7 @@
 
 ```mermaid
 flowchart TB
-    subgraph MainProc["主进程：EkkoVideo GUI (MyGo 原生 UI + libmpv)"]
+    subgraph MainProc["主进程：Velan GUI (MyGo 原生 UI + libmpv)"]
         subgraph UI["UI 层（严格主线程）"]
             Shell["App Shell<br/>窗口 / 路由 / 侧栏 / 菜单 / 托盘"]
             ListPages["列表页模板<br/>PosterGrid · FileBrowser · ChannelList · LiveGrid"]
@@ -42,7 +42,7 @@ flowchart TB
         end
     end
 
-    subgraph SubProc["独立子进程：EkkoGateway (127.0.0.1 随机端口)"]
+    subgraph SubProc["独立子进程：VelanGateway (127.0.0.1 随机端口)"]
         GWServer["本地 HTTP/RPC 服务<br/>Token 鉴权 · Stdin/PPID 看门狗"]
         Online["online/* 协议适配器<br/>hongguo · yeguo · huangdou · huangju · dsd"]
         StreamProxy["流媒体代理<br/>CENC Range 原地解密 · HLS 改写 · 签名自动续期"]
@@ -71,7 +71,7 @@ flowchart TB
 
 - **单二进制双模式**：默认启动 GUI 主进程；传入 `--gateway` 参数时进入纯无头网关子进程模式（避免打包维护两套二进制与两份签名）。
 - **启动与握手**：
-  1. 主进程生成 32 字节随机 `EKKO_GW_TOKEN`（经环境变量或 stdin 传递），启动子进程 `os.Executable() --gateway --port 0`。
+  1. 主进程生成 32 字节随机 `VELAN_GW_TOKEN`（经环境变量或 stdin 传递），启动子进程 `os.Executable() --gateway --port 0`。
   2. 子进程绑定 `127.0.0.1:0`，向 stdout 输出一行 JSON `{"addr":"127.0.0.1:xxxxx","pid":12345}` 后进入服务循环。
   3. 所有 API 请求校验 `Authorization: Bearer <token>` 与 `Host` 头；流代理 URL 使用随机前缀 + 一次性/会话 token。
 - **防僵尸与自动拉起（Supervisor）**：
@@ -207,7 +207,7 @@ type PlayerProfile interface {
 ## 8. 目录结构规划
 
 ```text
-EkkoVideo/
+Velan/
 ├── main.go                     # 入口：默认启动 GUI；--gateway 启动独立网关子进程
 ├── mygo.json                   # 应用元数据、文件关联、更新配置
 ├── go.mod                      # 锁定 github.com/egoist/mygo v0.10.0

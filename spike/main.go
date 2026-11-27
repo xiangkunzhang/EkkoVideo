@@ -307,7 +307,7 @@ func (a *spikeApp) view(c *ui.Context) {
 			ui.Column(c).Width(float32(sideW)).FillHeight().
 				Background(ui.Hex("#16181d")).Padding(44, 12, 12, 12).Gap(8).
 				Children(func() {
-					ui.Text(c, "EkkoVideo M0").FontSize(16).Bold().TextColor(ui.RGB(255, 255, 255))
+					ui.Text(c, "Velan M0").FontSize(16).Bold().TextColor(ui.RGB(255, 255, 255))
 					ui.Text(c, "macOS 同窗合成验证").FontSize(11).TextColor(ui.RGBA(255, 255, 255, 0.6))
 					ui.Box(c).Height(1).FillWidth().Background(ui.RGBA(255, 255, 255, 0.1))
 
@@ -442,7 +442,7 @@ func main() {
 	})
 	mygo.App.WhenReady(func() {
 		app.win = mygo.NewWindow(mygo.WindowOptions{
-			Title:           "EkkoVideo M0 Spike",
+			Title:           "Velan M0 Spike",
 			Width:           1120,
 			Height:          700,
 			MinWidth:        760,

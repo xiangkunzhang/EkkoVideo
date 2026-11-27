@@ -11,8 +11,8 @@ import (
 	"unsafe"
 
 	"github.com/ebitengine/purego"
-	"github.com/xiangkunzhang/EkkoVideo/internal/core"
-	"github.com/xiangkunzhang/EkkoVideo/internal/infra/safego"
+	"github.com/xiangkunzhang/Velan/internal/core"
+	"github.com/xiangkunzhang/Velan/internal/infra/safego"
 )
 
 type Track struct {
