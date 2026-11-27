@@ -3,12 +3,24 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-and-vet:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -20,8 +32,9 @@ jobs:
         run: |
           go test -race ./internal/app/... ./internal/core/... ./internal/danmaku/... ./internal/gateway/... ./internal/infra/... ./internal/provider/local/... ./internal/provider/iptv/...
 
-      - name: Run go vet (darwin & windows)
+      - name: Run cross-platform go vet
         run: |
           go vet ./...
+          GOOS=darwin go vet ./...
           GOOS=windows GOARCH=amd64 go vet ./...
           go tool mygo vet .
